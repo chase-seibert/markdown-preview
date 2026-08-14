@@ -14,6 +14,8 @@ window, with no project or folder model.
   **Command-0**.
 - Copies source Markdown, rendered plain text, or rich HTML/RTF; Command-C
   copies the full rich document when there is no selection.
+- **Copy for Chat** (`Control-Command-C`) produces Slack-friendly rich text
+  with bold headings, space after the title, and space before later headings.
 - Exports Markdown, plain text, rich text, HTML, and PDF.
 
 ## Build and run

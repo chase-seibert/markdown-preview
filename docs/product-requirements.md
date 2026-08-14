@@ -18,3 +18,5 @@
   so that the app stays focused on viewing.
 - As a collaborator, I want Command-C to copy my selection normally or the full
   rendered document as rich text when nothing is selected.
+- As a collaborator, I want a chat-oriented copy command that preserves bold
+  headings and section spacing when pasted into Slack-like composers.

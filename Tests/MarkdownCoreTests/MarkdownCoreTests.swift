@@ -40,6 +40,46 @@ final class MarkdownCoreTests: XCTestCase {
         XCTAssertTrue(html.contains("color-scheme: light dark"))
     }
 
+    func testChatHTMLUsesBoldHeadingsAndConservativeSectionSpacing() {
+        let html = MarkdownHTMLRenderer().chatFragment(
+            source: """
+                # Title
+
+                An **intro** paragraph.
+
+                ## Section
+
+                - First
+                - Second
+
+                Continuation paragraph.
+
+                ```text
+                code
+                ```
+
+                ## Next
+
+                Final paragraph.
+                """
+        )
+
+        XCTAssertTrue(html.contains("<div><strong>Title</strong></div>"))
+        XCTAssertTrue(html.contains("<div><strong>Section</strong></div>"))
+        XCTAssertTrue(html.contains("<div><strong>Next</strong></div>"))
+        XCTAssertTrue(html.contains("<div>An <strong>intro</strong> paragraph.</div>"))
+        XCTAssertTrue(html.contains("<ul><li>First</li><li>Second</li></ul>"))
+        XCTAssertEqual(html.components(separatedBy: "<div><br></div>").count - 1, 3)
+        XCTAssertTrue(html.contains("<strong>Title</strong></div>\n<div><br></div>\n<div>An"))
+        XCTAssertTrue(html.contains("paragraph.</div>\n<div><br></div>\n<div><strong>Section"))
+        XCTAssertTrue(html.contains("<strong>Section</strong></div>\n<ul>"))
+        XCTAssertTrue(html.contains("</ul>\n<div>Continuation paragraph.</div>\n<pre>"))
+        XCTAssertTrue(html.contains("</pre>\n<div><br></div>\n<div><strong>Next"))
+        XCTAssertTrue(html.contains("<strong>Next</strong></div>\n<div>Final paragraph.</div>"))
+        XCTAssertFalse(html.contains("<h1>"))
+        XCTAssertFalse(html.contains("<h2>"))
+    }
+
     @MainActor
     func testRenderedPlainTextRemovesMarkdownSyntax() {
         let text = MarkdownAttributedRenderer().plainText("# Heading\n\nThis is **bold**.\n\n- Item")

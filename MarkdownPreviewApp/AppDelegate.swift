@@ -144,6 +144,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         writeRichText(document)
     }
 
+    @objc func copyForChat(_ sender: Any?) {
+        guard let document = currentDocument else { return }
+        let pasteboard = NSPasteboard.general
+        let html = MarkdownHTMLRenderer().chatFragment(source: document.source)
+        pasteboard.clearContents()
+        pasteboard.setString(document.renderedText.string, forType: .string)
+        pasteboard.setData(Data(html.utf8), forType: .html)
+    }
+
     private func writeRichText(_ document: MarkdownDocument) {
         let attributed = document.renderedText
         let pasteboard = NSPasteboard.general
@@ -164,7 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let actionsRequiringDocument: [Selector] = [
-            #selector(copy(_:)), #selector(copySource(_:)), #selector(copyPlainText(_:)), #selector(copyRichText(_:)),
+            #selector(copy(_:)), #selector(copySource(_:)), #selector(copyPlainText(_:)),
+            #selector(copyRichText(_:)), #selector(copyForChat(_:)),
             #selector(exportMarkdown(_:)), #selector(exportPlainText(_:)), #selector(exportRichText(_:)),
             #selector(exportHTML(_:)), #selector(exportPDF(_:)),
         ]
@@ -319,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         addItem("Copy Source Markdown", action: #selector(copySource(_:)), key: "c", modifiers: [.command, .shift], to: edit)
         addItem("Copy All as Plain Text", action: #selector(copyPlainText(_:)), key: "c", modifiers: [.command, .option], to: edit)
         addItem("Copy All as Rich Text", action: #selector(copyRichText(_:)), to: edit)
+        addItem("Copy for Chat", action: #selector(copyForChat(_:)), key: "c", modifiers: [.command, .control], to: edit)
         edit.addItem(.separator())
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         let find = NSMenu(title: "Find")

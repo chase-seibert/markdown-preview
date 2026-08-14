@@ -51,6 +51,45 @@ public struct MarkdownHTMLRenderer: Sendable {
         blocks(parser.parse(source))
     }
 
+    /// Rich HTML tailored to chat composers that discard heading elements and
+    /// CSS margins. Headings become bold lines. Explicit blank lines appear
+    /// only after the document title and before later section headings.
+    public func chatFragment(source: String) -> String {
+        let values = parser.parse(source)
+        var elements: [String] = []
+        for (index, block) in values.enumerated() {
+            if index > 0,
+               shouldAddChatSpacer(
+                   before: block,
+                   after: values[index - 1],
+                   at: index
+               )
+            {
+                elements.append("<div><br></div>")
+            }
+            elements.append(chatBlock(block))
+        }
+        let content = elements.joined(separator: "\n")
+        return "<div data-markdown-preview-chat=\"true\">\(content)</div>"
+    }
+
+    private func shouldAddChatSpacer(
+        before current: MarkdownBlock,
+        after previous: MarkdownBlock,
+        at index: Int
+    ) -> Bool {
+        if index == 1,
+           case let .heading(level, _) = previous,
+           level == 1
+        {
+            return true
+        }
+        if case .heading = current {
+            return true
+        }
+        return false
+    }
+
     private func blocks(_ values: [MarkdownBlock]) -> String {
         values.map { block in
             switch block {
@@ -77,6 +116,33 @@ public struct MarkdownHTMLRenderer: Sendable {
                 return "<table><thead><tr>\(heading)</tr></thead><tbody>\(body)</tbody></table>"
             }
         }.joined(separator: "\n")
+    }
+
+    private func chatBlock(_ block: MarkdownBlock) -> String {
+        switch block {
+        case let .heading(_, text):
+            return "<div><strong>\(inline(text))</strong></div>"
+        case let .paragraph(text):
+            return "<div>\(inline(text).replacingOccurrences(of: "\n", with: "<br>"))</div>"
+        case let .unorderedList(items):
+            return list(items, ordered: false)
+        case let .orderedList(items):
+            return list(items, ordered: true)
+        case let .blockquote(children):
+            let content = children.map(chatBlock).joined(separator: "<br>")
+            return "<blockquote>\(content)</blockquote>"
+        case let .code(language, text):
+            let className = language.map { " class=\"language-\(attribute($0))\"" } ?? ""
+            return "<pre><code\(className)>\(escape(text))</code></pre>"
+        case .thematicBreak:
+            return "<div>────────────</div>"
+        case let .table(headers, rows):
+            let heading = headers.map { "<th>\(inline($0))</th>" }.joined()
+            let body = rows.map { row in
+                "<tr>" + row.map { "<td>\(inline($0))</td>" }.joined() + "</tr>"
+            }.joined()
+            return "<table><thead><tr>\(heading)</tr></thead><tbody>\(body)</tbody></table>"
+        }
     }
 
     private func list(_ items: [MarkdownBlock.ListItem], ordered: Bool) -> String {
@@ -180,4 +246,3 @@ public struct MarkdownHTMLRenderer: Sendable {
         escape(value).replacingOccurrences(of: "'", with: "&#39;")
     }
 }
-

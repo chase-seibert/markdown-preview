@@ -18,3 +18,7 @@ their relative hierarchy. The Quick Look extension uses matching CSS with
 
 Standard Copy preserves a selected range. With no selection, Command-C copies
 the complete rendered document as rich HTML/RTF plus a plain-text fallback.
+Copy for Chat uses a deliberately simpler HTML dialect for Slack and similar
+editors: headings are bold lines rather than heading tags. It adds an explicit
+blank line after the document title and before later headings, while keeping
+paragraphs, lists, code blocks, and section contents compact.
