@@ -17,10 +17,13 @@
 		A10000000000000000000007 /* MarkdownAttributedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* MarkdownAttributedRenderer.swift */; };
 		A10000000000000000000008 /* MarkdownHTMLRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* MarkdownHTMLRenderer.swift */; };
 		A10000000000000000000009 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000004 /* PDFExporter.swift */; };
+		A1000000000000000000000D /* MarkdownFontScalePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000005 /* MarkdownFontScalePreference.swift */; };
 		A1000000000000000000000A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F30000000000000000000001 /* Assets.xcassets */; };
 		A20000000000000000000001 /* PreviewProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F40000000000000000000001 /* PreviewProvider.swift */; };
 		A20000000000000000000002 /* MarkdownParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* MarkdownParser.swift */; };
 		A20000000000000000000003 /* MarkdownHTMLRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* MarkdownHTMLRenderer.swift */; };
+		A20000000000000000000004 /* MarkdownFontScalePreference.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000005 /* MarkdownFontScalePreference.swift */; };
+		A20000000000000000000005 /* MarkdownAttributedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* MarkdownAttributedRenderer.swift */; };
 		A30000000000000000000001 /* MarkdownPreviewQuickLook.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F50000000000000000000002 /* MarkdownPreviewQuickLook.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -46,6 +49,7 @@
 		F20000000000000000000002 /* MarkdownAttributedRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownAttributedRenderer.swift; sourceTree = "<group>"; };
 		F20000000000000000000003 /* MarkdownHTMLRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTMLRenderer.swift; sourceTree = "<group>"; };
 		F20000000000000000000004 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
+		F20000000000000000000005 /* MarkdownFontScalePreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownFontScalePreference.swift; sourceTree = "<group>"; };
 		F30000000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F40000000000000000000001 /* PreviewProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewProvider.swift; sourceTree = "<group>"; };
 		F40000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -62,7 +66,7 @@
 /* Begin PBXGroup section */
 		G10000000000000000000001 = {isa = PBXGroup; children = (G10000000000000000000002 /* MarkdownPreviewApp */, G10000000000000000000003 /* MarkdownCore */, G10000000000000000000004 /* MarkdownPreviewQuickLook */, G10000000000000000000005 /* Resources */, G10000000000000000000006 /* Products */, ); sourceTree = "<group>"; };
 		G10000000000000000000002 /* MarkdownPreviewApp */ = {isa = PBXGroup; path = MarkdownPreviewApp; sourceTree = "<group>"; children = (F10000000000000000000001, F10000000000000000000008, F10000000000000000000009, F10000000000000000000002, F10000000000000000000003, F10000000000000000000004, F10000000000000000000005, F10000000000000000000006, F10000000000000000000007, ); };
-		G10000000000000000000003 /* MarkdownCore */ = {isa = PBXGroup; path = MarkdownCore; sourceTree = "<group>"; children = (F20000000000000000000001, F20000000000000000000002, F20000000000000000000003, F20000000000000000000004, ); };
+		G10000000000000000000003 /* MarkdownCore */ = {isa = PBXGroup; path = MarkdownCore; sourceTree = "<group>"; children = (F20000000000000000000001, F20000000000000000000002, F20000000000000000000003, F20000000000000000000004, F20000000000000000000005, ); };
 		G10000000000000000000004 /* MarkdownPreviewQuickLook */ = {isa = PBXGroup; path = MarkdownPreviewQuickLook; sourceTree = "<group>"; children = (F40000000000000000000001, F40000000000000000000002, F40000000000000000000003, ); };
 		G10000000000000000000005 /* Resources */ = {isa = PBXGroup; path = Resources; sourceTree = "<group>"; children = (F30000000000000000000001, ); };
 		G10000000000000000000006 /* Products */ = {isa = PBXGroup; name = Products; sourceTree = "<group>"; children = (F50000000000000000000001, F50000000000000000000002, ); };
@@ -83,8 +87,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B10000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A1000000000000000000000B, A1000000000000000000000C, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000009, ); runOnlyForDeploymentPostprocessing = 0; };
-		B20000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, ); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A1000000000000000000000B, A1000000000000000000000C, A1000000000000000000000D, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000009, ); runOnlyForDeploymentPostprocessing = 0; };
+		B20000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000004, A20000000000000000000005, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */

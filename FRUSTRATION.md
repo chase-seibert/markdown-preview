@@ -22,3 +22,20 @@ The strict formatter reports indentation errors across nearly every existing
 Swift line because its configured style differs from the repository's
 four-space indentation. Use the compiler, `git diff --check`, and targeted
 formatting for changed code instead of treating strict lint output as actionable.
+
+## App Groups break local ad-hoc signing
+
+Adding `com.apple.security.application-groups` to the app and Quick Look
+extension makes the Release build require provisioning profiles, which breaks
+the project's local `Sign to Run Locally` workflow. Reading the host app's
+preference domain directly also fails because its standard preferences live in
+the app's private sandbox container. Mirror only the needed value into a
+dedicated preference domain, with a `shared-preference.read-write` exception for
+the app and a `shared-preference.read-only` exception for the extension.
+
+## `qlmanage -p -o` crashes for the Quick Look extension
+
+On macOS 26, asking `qlmanage` to export this extension's preview reply with
+`-p -o` aborts inside ExtensionFoundation with an `NSInvalidArgumentException`
+about a nil dictionary key. Use an ordinary fresh preview plus window capture
+or extension logging for runtime verification instead.

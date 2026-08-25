@@ -12,20 +12,28 @@ final class FontScaleController: NSObject, ObservableObject {
 
     @Published private(set) var scale: CGFloat
 
-    private let defaultsKey = "MarkdownContentFontScale"
     private let step: CGFloat = 0.1
 
     private override init() {
-        let stored = UserDefaults.standard.object(forKey: defaultsKey) as? NSNumber
-        scale = Self.clamped(stored.map(CGFloat.init(truncating:)) ?? MarkdownRenderOptions.defaultScale)
+        let stored = MarkdownFontScalePreference.storedValue(in: .standard)
+            ?? MarkdownFontScalePreference.defaultScale
+        scale = CGFloat(stored)
         super.init()
+        MarkdownFontScalePreference.save(
+            stored,
+            inDomain: MarkdownFontScalePreference.sharedPreferenceDomain
+        )
     }
 
     func setScale(_ value: CGFloat) {
         let newValue = Self.clamped(value)
         guard abs(newValue - scale) > 0.0001 else { return }
         scale = newValue
-        UserDefaults.standard.set(Double(newValue), forKey: defaultsKey)
+        MarkdownFontScalePreference.save(Double(newValue), in: .standard)
+        MarkdownFontScalePreference.save(
+            Double(newValue),
+            inDomain: MarkdownFontScalePreference.sharedPreferenceDomain
+        )
         NotificationCenter.default.post(name: .markdownFontScaleDidChange, object: self)
     }
 
@@ -46,8 +54,6 @@ final class FontScaleController: NSObject, ObservableObject {
     }
 
     private static func clamped(_ value: CGFloat) -> CGFloat {
-        guard value.isFinite else { return MarkdownRenderOptions.defaultScale }
-        return min(max(value, MarkdownRenderOptions.minimumScale), MarkdownRenderOptions.maximumScale)
+        CGFloat(MarkdownFontScalePreference.clamped(Double(value)))
     }
 }
-

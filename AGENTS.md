@@ -22,9 +22,13 @@ workflows to the Makefile instead of documenting one-off shell commands.
 - `make lint`: compile-check the package and validate project metadata.
 - `make test`: run unit tests.
 - `make build`: build the app and embedded Quick Look extension.
-- `make run`: build and launch the app.
+- `make run`: build, replace, and relaunch the app in `~/Applications`.
 - `make install`: install the app in the user's Applications folder.
 - `make clean`: remove local build outputs.
+
+After every app code change, use `make run` so verification always replaces and
+relaunches `~/Applications/Markdown Preview.app`. Do not leave a separate build
+product running alongside the installed app.
 
 ## Documentation
 
@@ -33,4 +37,3 @@ workflows to the Makefile instead of documenting one-off shell commands.
 - `docs/architecture.md`
 - `docs/setup-install.md`
 - `docs/initial-brainstorm.md`
-

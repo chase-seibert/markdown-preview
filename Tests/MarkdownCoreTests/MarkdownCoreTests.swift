@@ -116,6 +116,39 @@ final class MarkdownCoreTests: XCTestCase {
         XCTAssertEqual(MarkdownRenderOptions(fontScale: .nan).fontScale, MarkdownRenderOptions.defaultScale)
     }
 
+    func testFontScalePreferencePersistsAndClampsValues() throws {
+        let suiteName = "com.cseibert.MarkdownPreviewTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertNil(MarkdownFontScalePreference.storedValue(in: defaults))
+
+        MarkdownFontScalePreference.save(1.2, in: defaults)
+        XCTAssertEqual(MarkdownFontScalePreference.storedValue(in: defaults), 1.2)
+
+        defaults.set(100, forKey: MarkdownFontScalePreference.defaultsKey)
+        XCTAssertEqual(
+            MarkdownFontScalePreference.storedValue(in: defaults),
+            MarkdownFontScalePreference.maximumScale
+        )
+        XCTAssertEqual(
+            MarkdownFontScalePreference.clamped(.nan),
+            MarkdownFontScalePreference.defaultScale
+        )
+
+        let domain = "\(suiteName).shared"
+        defer {
+            CFPreferencesSetAppValue(
+                MarkdownFontScalePreference.defaultsKey as CFString,
+                nil,
+                domain as CFString
+            )
+            CFPreferencesAppSynchronize(domain as CFString)
+        }
+        XCTAssertTrue(MarkdownFontScalePreference.save(1.4, inDomain: domain))
+        XCTAssertEqual(MarkdownFontScalePreference.storedValue(inDomain: domain), 1.4)
+    }
+
     @MainActor
     func testRichTextAndPDFExportsProduceData() throws {
         let rendered = MarkdownAttributedRenderer().render("# Export\n\nA **rich** document.", options: .init(palette: .print))

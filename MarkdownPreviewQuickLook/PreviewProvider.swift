@@ -1,26 +1,87 @@
+import AppKit
 import Foundation
 import QuickLookUI
-import UniformTypeIdentifiers
 
-final class PreviewProvider: QLPreviewProvider, QLPreviewingController {
-    func providePreview(
-        for request: QLFilePreviewRequest,
-        completionHandler handler: @escaping @Sendable (QLPreviewReply?, (any Error)?) -> Void
+@MainActor
+final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingController {
+    private let textView = QuickLookTextView()
+
+    override func loadView() {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.documentView = textView
+        view = scrollView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        preferredContentSize = NSSize(width: 760, height: 900)
+        configureTextView()
+    }
+
+    func preparePreviewOfFile(
+        at url: URL,
+        completionHandler handler: @escaping (Error?) -> Void
     ) {
-        let url = request.fileURL
-        let reply = QLPreviewReply(
-            dataOfContentType: .html,
-            contentSize: CGSize(width: 760, height: 900)
-        ) { _ in
+        do {
             let source = try String(contentsOf: url, encoding: .utf8)
-            let html = MarkdownHTMLRenderer().document(
-                source: source,
-                title: url.deletingPathExtension().lastPathComponent
+            let fontScale = MarkdownFontScalePreference.storedValue(
+                inDomain: MarkdownFontScalePreference.sharedPreferenceDomain
+            ) ?? MarkdownFontScalePreference.defaultScale
+
+            _ = view
+            textView.textStorage?.setAttributedString(
+                MarkdownAttributedRenderer().render(
+                    source,
+                    options: .init(fontScale: CGFloat(fontScale))
+                )
             )
-            return Data(html.utf8)
+            title = url.lastPathComponent
+            handler(nil)
+        } catch {
+            handler(error)
         }
-        reply.stringEncoding = .utf8
-        reply.title = url.lastPathComponent
-        handler(reply, nil)
+    }
+
+    private func configureTextView() {
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.importsGraphics = false
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.textColor = .labelColor
+        textView.allowsUndo = false
+        textView.usesAdaptiveColorMappingForDarkAppearance = true
+        textView.linkTextAttributes = [
+            .foregroundColor: NSColor.linkColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+        ]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+    }
+}
+
+@MainActor
+private final class QuickLookTextView: NSTextView {
+    override var frame: NSRect {
+        didSet { updateReadingInsets() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateReadingInsets()
+    }
+
+    private func updateReadingInsets() {
+        let horizontal = max(34, (bounds.width - 900) / 2)
+        textContainerInset = NSSize(width: horizontal, height: 38)
     }
 }

@@ -3,8 +3,10 @@
 ## Install
 
 Run `make install`. This builds `Markdown Preview.app`, copies it to
-`~/Applications`, and asks Launch Services to register it. Finder should then
-offer **Markdown Preview** under **Open With** for supported Markdown files.
+`~/Applications`, closing an older running copy before replacement, and asks
+Launch Services to register it. Run `make run` to perform the same installation
+and then launch the installed app. Finder should then offer **Markdown Preview**
+under **Open With** for supported Markdown files.
 
 ## Make it the default `.md` application
 
@@ -26,4 +28,3 @@ registration.
 The system, not the app, chooses among installed Quick Look providers. The
 extension declares Markdown support, but another installed provider or macOS's
 own fallback may be selected.
-

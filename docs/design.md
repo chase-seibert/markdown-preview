@@ -15,8 +15,9 @@ opening a Markdown file brings the app forward when the icon is hidden.
 Document colors are semantic system colors. The appearance setting can follow
 the system or force Light or Dark across the application. Headings, body text,
 lists, quotes, links, and code all scale from one clamped setting, preserving
-their relative hierarchy. The Quick Look extension uses matching CSS with
-`prefers-color-scheme` support.
+their relative hierarchy. The Quick Look extension uses the same persisted text
+scale and native attributed-text renderer. Its view is recreated for each
+preview, so a cached preview cannot preserve an obsolete scale.
 
 Standard Copy preserves a selected range. With no selection, Command-C copies
 the complete rendered document as rich HTML/RTF plus a plain-text fallback.

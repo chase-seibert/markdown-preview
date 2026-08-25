@@ -7,9 +7,9 @@ public struct MarkdownRenderOptions: Sendable {
         case print
     }
 
-    public static let minimumScale: CGFloat = 0.65
-    public static let maximumScale: CGFloat = 2.5
-    public static let defaultScale: CGFloat = 1
+    public static let minimumScale = CGFloat(MarkdownFontScalePreference.minimumScale)
+    public static let maximumScale = CGFloat(MarkdownFontScalePreference.maximumScale)
+    public static let defaultScale = CGFloat(MarkdownFontScalePreference.defaultScale)
 
     public let fontScale: CGFloat
     public let palette: Palette
