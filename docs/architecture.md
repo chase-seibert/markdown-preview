@@ -25,6 +25,16 @@ Quick Look previews read the same persisted scale. Both views multiply the
 900-point default maximum reading width by that scale so larger type can use a
 wider column without reducing the approximate characters per line.
 
+Both native text views intercept relative links whose destination has a
+supported Markdown extension. A shared resolver converts the link to a file URL
+relative to the source document, strips any fragment, and wraps the destination
+in the app's private `markdown-preview://open` route. Launch Services sends that
+route to the sandboxed host app. The first navigation into a folder presents a
+standard folder-access panel; the app stores a security-scoped bookmark and
+opens the target immediately after approval. Later links covered by that folder
+open without prompting, including links initiated in sandboxed Finder Quick
+Look previews. Other links retain AppKit's default behavior.
+
 Markdown parsing deliberately treats raw HTML as text. This keeps previews
 self-contained and prevents a viewed document from injecting scripts or
 loading remote content.

@@ -39,3 +39,18 @@ On macOS 26, asking `qlmanage` to export this extension's preview reply with
 `-p -o` aborts inside ExtensionFoundation with an `NSInvalidArgumentException`
 about a nil dictionary key. Use an ordinary fresh preview plus window capture
 or extension logging for runtime verification instead.
+
+## Reopening a sibling file does not expand sandbox access
+
+Asking Launch Services to reopen the sandboxed host app with a sibling Markdown
+URL still produces a permission alert because the original file grant does not
+cover neighboring files. Keep the sandbox and route link clicks through the
+app's custom URL scheme; authorize the shared folder once with `NSOpenPanel` and
+persist a security-scoped bookmark for later navigation.
+
+## Relaunch can race application termination
+
+Immediately calling `open` after asking the installed app to quit can fail with
+Launch Services error `-600` because AppleScript returns before the old process
+has fully exited. The install workflow now waits up to five seconds for the
+bundle-identified process to disappear before replacing and relaunching it.

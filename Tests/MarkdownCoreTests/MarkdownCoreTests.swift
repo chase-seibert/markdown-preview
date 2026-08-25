@@ -126,6 +126,52 @@ final class MarkdownCoreTests: XCTestCase {
         )
     }
 
+    func testLocalMarkdownLinksResolveRelativeToPreviewedDocument() throws {
+        let documentURL = URL(fileURLWithPath: "/tmp/project/docs/marketing.md")
+
+        let sibling = try XCTUnwrap(URL(string: "social.md"))
+        XCTAssertEqual(
+            MarkdownLinkResolver.localMarkdownURL(for: sibling, relativeTo: documentURL),
+            URL(fileURLWithPath: "/tmp/project/docs/social.md")
+        )
+
+        let nested = try XCTUnwrap(URL(string: "social-media-manager/README.md#setup"))
+        XCTAssertEqual(
+            MarkdownLinkResolver.localMarkdownURL(for: nested, relativeTo: documentURL),
+            URL(fileURLWithPath: "/tmp/project/docs/social-media-manager/README.md")
+        )
+
+        XCTAssertNil(
+            MarkdownLinkResolver.localMarkdownURL(
+                for: try XCTUnwrap(URL(string: "https://example.com/guide.md")),
+                relativeTo: documentURL
+            )
+        )
+        XCTAssertNil(
+            MarkdownLinkResolver.localMarkdownURL(
+                for: try XCTUnwrap(URL(string: "../notes.txt")),
+                relativeTo: documentURL
+            )
+        )
+
+        let destinationURL = URL(fileURLWithPath: "/tmp/project/docs/social.md")
+        let navigationURL = try XCTUnwrap(
+            MarkdownLinkResolver.navigationURL(for: destinationURL, relativeTo: documentURL)
+        )
+        XCTAssertEqual(
+            MarkdownLinkResolver.navigationRequest(from: navigationURL),
+            MarkdownLinkNavigationRequest(
+                fileURL: destinationURL,
+                accessDirectoryURL: URL(fileURLWithPath: "/tmp/project/docs", isDirectory: true)
+            )
+        )
+        XCTAssertNil(
+            MarkdownLinkResolver.navigationRequest(
+                from: try XCTUnwrap(URL(string: "markdown-preview://open?url=https://example.com/a.md"))
+            )
+        )
+    }
+
     func testFontScalePreferencePersistsAndClampsValues() throws {
         let suiteName = "com.cseibert.MarkdownPreviewTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

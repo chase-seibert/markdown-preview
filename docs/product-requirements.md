@@ -8,6 +8,8 @@
   Markdown file without launching the app.
 - As a reader, I want persistent font-size controls, so that every part of the
   rendered document is comfortable to read.
+- As a reader, I want relative links to Markdown files to open the linked file
+  in the preview app, so that I can navigate related local documentation.
 - As a reader, I want selectable content and a persistent System/Light/Dark
   appearance choice, so that the viewer fits normal macOS workflows.
 - As a collaborator, I want source, plain-text, and rich-text copy commands, so

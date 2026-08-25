@@ -2,12 +2,14 @@ import AppKit
 import Foundation
 
 @MainActor
-final class MarkdownViewController: NSViewController {
+final class MarkdownViewController: NSViewController, NSTextViewDelegate {
     private var source: String
+    private var documentURL: URL?
     private let textView = MarkdownTextView()
 
-    init(source: String) {
+    init(source: String, documentURL: URL?) {
         self.source = source
+        self.documentURL = documentURL
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -62,6 +64,7 @@ final class MarkdownViewController: NSViewController {
             .foregroundColor: NSColor.linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
         ]
+        textView.delegate = self
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.heightTracksTextView = false
         textView.isVerticallyResizable = true
@@ -76,6 +79,29 @@ final class MarkdownViewController: NSViewController {
     func updateSource(_ source: String) {
         self.source = source
         render()
+    }
+
+    func updateDocumentURL(_ documentURL: URL) {
+        self.documentURL = documentURL
+    }
+
+    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+        guard let documentURL,
+              let linkURL = link as? URL,
+              let destinationURL = MarkdownLinkResolver.localMarkdownURL(
+                  for: linkURL,
+                  relativeTo: documentURL
+              ),
+              let navigationURL = MarkdownLinkResolver.navigationURL(
+                  for: destinationURL,
+                  relativeTo: documentURL
+              )
+        else {
+            return false
+        }
+
+        NSWorkspace.shared.open(navigationURL)
+        return true
     }
 
     private func render() {

@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     private static var retainedDelegate: AppDelegate?
     private var settingsController: SettingsWindowController?
     private var receivedOpenRequest = false
+    private let linkedFileAccess = LinkedFileAccessController()
     private let logger = Logger(subsystem: "com.cseibert.MarkdownPreview", category: "DocumentLifecycle")
 
     static func main() {
@@ -48,9 +49,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        logger.info("Received URL open request for \(urls.count, privacy: .public) file(s)")
+        let fileURLs = urls.compactMap { url in
+            if let request = MarkdownLinkResolver.navigationRequest(from: url) {
+                return linkedFileAccess.authorizeAccessIfNeeded(for: request) ? request.fileURL : nil
+            }
+            return url.isFileURL ? url : nil
+        }
+        guard !fileURLs.isEmpty else { return }
+        logger.info("Received URL open request for \(fileURLs.count, privacy: .public) file(s)")
         receivedOpenRequest = true
-        open(urls)
+        open(fileURLs)
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -391,5 +399,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         item.target = target ?? self
+    }
+}
+
+@MainActor
+private final class LinkedFileAccessController {
+    private let defaultsKey = "LinkedMarkdownFolderBookmarks"
+    private var activeDirectories: [URL] = []
+
+    init() {
+        restoreBookmarks()
+    }
+
+    func authorizeAccessIfNeeded(for request: MarkdownLinkNavigationRequest) -> Bool {
+        if activeDirectories.contains(where: { contains(request.fileURL, in: $0) }) {
+            return true
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Allow Linked Markdown Files"
+        panel.message = "Select “\(request.accessDirectoryURL.lastPathComponent)” to let Markdown Preview open linked files in this folder."
+        panel.prompt = "Allow Access"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = request.accessDirectoryURL.deletingLastPathComponent()
+        panel.nameFieldStringValue = request.accessDirectoryURL.lastPathComponent
+
+        guard panel.runModal() == .OK,
+              let selectedURL = panel.url?.standardizedFileURL,
+              contains(request.fileURL, in: selectedURL)
+        else {
+            return false
+        }
+
+        persistAccess(to: selectedURL)
+        return true
+    }
+
+    private func restoreBookmarks() {
+        let storedBookmarks = UserDefaults.standard.array(forKey: defaultsKey) as? [Data] ?? []
+        for data in storedBookmarks {
+            var isStale = false
+            guard let directoryURL = try? URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else {
+                continue
+            }
+            _ = directoryURL.startAccessingSecurityScopedResource()
+            activeDirectories.append(directoryURL.standardizedFileURL)
+            if isStale { persistBookmarks() }
+        }
+    }
+
+    private func persistAccess(to directoryURL: URL) {
+        guard !activeDirectories.contains(where: { $0 == directoryURL }) else { return }
+        _ = directoryURL.startAccessingSecurityScopedResource()
+        activeDirectories.append(directoryURL)
+        persistBookmarks()
+    }
+
+    private func persistBookmarks() {
+        let bookmarks = activeDirectories.compactMap { directoryURL in
+            try? directoryURL.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+        }
+        UserDefaults.standard.set(bookmarks, forKey: defaultsKey)
+    }
+
+    private func contains(_ fileURL: URL, in directoryURL: URL) -> Bool {
+        var directoryPath = directoryURL.standardizedFileURL.path
+        while directoryPath.count > 1, directoryPath.hasSuffix("/") {
+            directoryPath.removeLast()
+        }
+        let filePath = fileURL.standardizedFileURL.path
+        if directoryPath == "/" { return filePath.hasPrefix("/") }
+        return filePath == directoryPath || filePath.hasPrefix(directoryPath + "/")
     }
 }

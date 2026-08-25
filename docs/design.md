@@ -22,6 +22,13 @@ responsive reading width, and native attributed-text renderer. Its view is
 recreated for each preview, so a cached preview cannot preserve an obsolete
 scale.
 
+Relative links to other Markdown files resolve from the displayed document's
+folder. Activating one opens the destination in Markdown Preview, whether the
+link starts in a document window or a Finder Quick Look preview. Web links keep
+their standard system behavior. The first local navigation into a folder asks
+the reader to allow that folder; subsequent links covered by the saved access
+open directly.
+
 Standard Copy preserves a selected range. With no selection, Command-C copies
 the complete rendered document as rich HTML/RTF plus a plain-text fallback.
 Copy for Chat uses a deliberately simpler HTML dialect for Slack and similar

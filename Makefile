@@ -31,6 +31,7 @@ run: install
 install:
 	xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration Release -destination 'platform=macOS' -derivedDataPath "$(DERIVED_DATA)" build
 	@/usr/bin/osascript -e 'tell application "System Events" to set isRunning to exists (processes where bundle identifier is "$(BUNDLE_IDENTIFIER)")' -e 'if isRunning then tell application id "$(BUNDLE_IDENTIFIER)" to quit'
+	@/usr/bin/osascript -e 'repeat 50 times' -e 'tell application "System Events" to set isRunning to exists (processes where bundle identifier is "$(BUNDLE_IDENTIFIER)")' -e 'if not isRunning then return' -e 'delay 0.1' -e 'end repeat' -e 'error "Markdown Preview did not quit in time"'
 	@mkdir -p "$(HOME)/Applications"
 	ditto "$(DERIVED_DATA)/Build/Products/Release/$(APP_NAME).app" "$(INSTALL_PATH)"
 	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$(INSTALL_PATH)"

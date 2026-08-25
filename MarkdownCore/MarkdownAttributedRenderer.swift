@@ -287,3 +287,103 @@ private struct Colors {
         }
     }
 }
+
+public enum MarkdownLinkResolver {
+    private static let markdownExtensions = Set(["md", "markdown", "mdown", "mkd"])
+    private static let navigationScheme = "markdown-preview"
+    private static let navigationHost = "open"
+
+    public static func localMarkdownURL(for linkURL: URL, relativeTo documentURL: URL) -> URL? {
+        guard linkURL.scheme == nil || linkURL.isFileURL else { return nil }
+        guard !linkURL.relativeString.hasPrefix("#") else { return nil }
+
+        let resolvedURL: URL
+        if linkURL.isFileURL {
+            resolvedURL = linkURL
+        } else {
+            let directoryURL = documentURL.deletingLastPathComponent()
+            guard let relativeURL = URL(string: linkURL.relativeString, relativeTo: directoryURL) else {
+                return nil
+            }
+            resolvedURL = relativeURL.absoluteURL
+        }
+
+        var components = URLComponents(url: resolvedURL, resolvingAgainstBaseURL: true)
+        components?.fragment = nil
+        guard let fileURL = components?.url?.standardizedFileURL,
+              markdownExtensions.contains(fileURL.pathExtension.lowercased())
+        else {
+            return nil
+        }
+        return fileURL
+    }
+
+    public static func navigationURL(for fileURL: URL, relativeTo documentURL: URL) -> URL? {
+        guard let fileURL = supportedMarkdownFileURL(fileURL) else { return nil }
+        let accessDirectoryURL = commonAncestorDirectory(
+            of: documentURL.deletingLastPathComponent(),
+            and: fileURL.deletingLastPathComponent()
+        )
+        var components = URLComponents()
+        components.scheme = navigationScheme
+        components.host = navigationHost
+        components.queryItems = [
+            URLQueryItem(name: "url", value: fileURL.absoluteString),
+            URLQueryItem(name: "directory", value: accessDirectoryURL.absoluteString),
+        ]
+        return components.url
+    }
+
+    public static func navigationRequest(from navigationURL: URL) -> MarkdownLinkNavigationRequest? {
+        guard navigationURL.scheme == navigationScheme,
+              navigationURL.host == navigationHost,
+              let components = URLComponents(url: navigationURL, resolvingAgainstBaseURL: false),
+              let value = components.queryItems?.first(where: { $0.name == "url" })?.value,
+              let directoryValue = components.queryItems?.first(where: { $0.name == "directory" })?.value,
+              let fileURL = URL(string: value),
+              let validatedFileURL = supportedMarkdownFileURL(fileURL),
+              let directoryURL = URL(string: directoryValue),
+              directoryURL.isFileURL,
+              contains(validatedFileURL, in: directoryURL)
+        else {
+            return nil
+        }
+        return MarkdownLinkNavigationRequest(
+            fileURL: validatedFileURL,
+            accessDirectoryURL: directoryURL.standardizedFileURL
+        )
+    }
+
+    private static func supportedMarkdownFileURL(_ url: URL) -> URL? {
+        guard url.isFileURL,
+              markdownExtensions.contains(url.pathExtension.lowercased())
+        else {
+            return nil
+        }
+        return url.standardizedFileURL
+    }
+
+    private static func commonAncestorDirectory(of firstURL: URL, and secondURL: URL) -> URL {
+        var candidate = firstURL.standardizedFileURL
+        let secondURL = secondURL.standardizedFileURL
+        while candidate.path != "/", !contains(secondURL, in: candidate) {
+            candidate.deleteLastPathComponent()
+        }
+        return candidate
+    }
+
+    private static func contains(_ fileURL: URL, in directoryURL: URL) -> Bool {
+        var directoryPath = directoryURL.standardizedFileURL.path
+        while directoryPath.count > 1, directoryPath.hasSuffix("/") {
+            directoryPath.removeLast()
+        }
+        let filePath = fileURL.standardizedFileURL.path
+        if directoryPath == "/" { return filePath.hasPrefix("/") }
+        return filePath == directoryPath || filePath.hasPrefix(directoryPath + "/")
+    }
+}
+
+public struct MarkdownLinkNavigationRequest: Equatable, Sendable {
+    public let fileURL: URL
+    public let accessDirectoryURL: URL
+}

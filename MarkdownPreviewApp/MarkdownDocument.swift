@@ -41,7 +41,7 @@ final class MarkdownDocument: NSDocument {
     }
 
     override func makeWindowControllers() {
-        let contentController = MarkdownViewController(source: source)
+        let contentController = MarkdownViewController(source: source, documentURL: fileURL)
         let window = NSWindow(contentViewController: contentController)
         window.setContentSize(NSSize(width: 780, height: 760))
         window.minSize = NSSize(width: 460, height: 320)
@@ -136,6 +136,7 @@ final class MarkdownDocument: NSDocument {
         for controller in windowControllers {
             controller.window?.representedURL = url
             controller.window?.title = displayName
+            (controller.contentViewController as? MarkdownViewController)?.updateDocumentURL(url)
         }
     }
 

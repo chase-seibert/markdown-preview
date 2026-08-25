@@ -3,8 +3,9 @@ import Foundation
 import QuickLookUI
 
 @MainActor
-final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingController {
+final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingController, NSTextViewDelegate {
     private let textView = QuickLookTextView()
+    private var previewURL: URL?
 
     override func loadView() {
         let scrollView = NSScrollView()
@@ -29,6 +30,7 @@ final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingContr
     ) {
         do {
             let source = try String(contentsOf: url, encoding: .utf8)
+            previewURL = url
             let fontScale = MarkdownFontScalePreference.storedValue(
                 inDomain: MarkdownFontScalePreference.sharedPreferenceDomain
             ) ?? MarkdownFontScalePreference.defaultScale
@@ -62,11 +64,31 @@ final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingContr
             .foregroundColor: NSColor.linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue,
         ]
+        textView.delegate = self
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.heightTracksTextView = false
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+    }
+
+    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+        guard let previewURL,
+              let linkURL = link as? URL,
+              let destinationURL = MarkdownLinkResolver.localMarkdownURL(
+                  for: linkURL,
+                  relativeTo: previewURL
+              ),
+              let navigationURL = MarkdownLinkResolver.navigationURL(
+                  for: destinationURL,
+                  relativeTo: previewURL
+              )
+        else {
+            return false
+        }
+
+        NSWorkspace.shared.open(navigationURL)
+        return true
     }
 }
 
