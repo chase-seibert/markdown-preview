@@ -16,12 +16,12 @@ nonisolated `deinit`. Keep watcher cleanup in the watcher itself and mark the
 queue-confined watcher `@unchecked Sendable` when its synchronization is
 explicit.
 
-## `swift format lint --strict` rejects the repository's existing style
+## Repository-wide Swift formatting rewrites the existing style
 
-The strict formatter reports indentation errors across nearly every existing
-Swift line because its configured style differs from the repository's
-four-space indentation. Use the compiler, `git diff --check`, and targeted
-formatting for changed code instead of treating strict lint output as actionable.
+Both strict formatter checks and `make format` disagree with the repository's
+existing four-space indentation. The latter rewrites nearly every Swift file,
+creating a large unrelated diff. Use the compiler and `git diff --check`; format
+only deliberately selected changed regions when it will preserve local style.
 
 ## App Groups break local ad-hoc signing
 

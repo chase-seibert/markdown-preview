@@ -43,3 +43,11 @@ public enum MarkdownFontScalePreference {
         return min(max(value, minimumScale), maximumScale)
     }
 }
+
+public enum MarkdownReadingLayout {
+    public static let baseMaximumTextContainerWidth = 900.0
+
+    public static func maximumTextContainerWidth(fontScale: Double) -> Double {
+        baseMaximumTextContainerWidth * MarkdownFontScalePreference.clamped(fontScale)
+    }
+}

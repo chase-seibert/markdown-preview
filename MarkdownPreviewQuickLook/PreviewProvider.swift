@@ -34,6 +34,7 @@ final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingContr
             ) ?? MarkdownFontScalePreference.defaultScale
 
             _ = view
+            textView.fontScale = CGFloat(fontScale)
             textView.textStorage?.setAttributedString(
                 MarkdownAttributedRenderer().render(
                     source,
@@ -71,6 +72,10 @@ final class PreviewProvider: NSViewController, @preconcurrency QLPreviewingContr
 
 @MainActor
 private final class QuickLookTextView: NSTextView {
+    var fontScale = CGFloat(MarkdownFontScalePreference.defaultScale) {
+        didSet { updateReadingInsets() }
+    }
+
     override var frame: NSRect {
         didSet { updateReadingInsets() }
     }
@@ -81,7 +86,10 @@ private final class QuickLookTextView: NSTextView {
     }
 
     private func updateReadingInsets() {
-        let horizontal = max(34, (bounds.width - 900) / 2)
+        let maximumWidth = CGFloat(
+            MarkdownReadingLayout.maximumTextContainerWidth(fontScale: Double(fontScale))
+        )
+        let horizontal = max(34, (bounds.width - maximumWidth) / 2)
         textContainerInset = NSSize(width: horizontal, height: 38)
     }
 }

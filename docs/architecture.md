@@ -21,7 +21,9 @@ stored in the app's private preferences and mirrored into a dedicated shared
 preference domain. The app has write access only to that domain and Quick Look
 has read-only access. Values are clamped before use. The app broadcasts changes
 through a notification so existing windows rerender from source; newly opened
-Quick Look previews read the same persisted scale.
+Quick Look previews read the same persisted scale. Both views multiply the
+900-point default maximum reading width by that scale so larger type can use a
+wider column without reducing the approximate characters per line.
 
 Markdown parsing deliberately treats raw HTML as text. This keeps previews
 self-contained and prevents a viewed document from injecting scripts or

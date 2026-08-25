@@ -116,6 +116,16 @@ final class MarkdownCoreTests: XCTestCase {
         XCTAssertEqual(MarkdownRenderOptions(fontScale: .nan).fontScale, MarkdownRenderOptions.defaultScale)
     }
 
+    func testMaximumReadingWidthScalesWithFontSize() {
+        XCTAssertEqual(MarkdownReadingLayout.maximumTextContainerWidth(fontScale: 1), 900)
+        XCTAssertEqual(MarkdownReadingLayout.maximumTextContainerWidth(fontScale: 0.8), 720)
+        XCTAssertEqual(MarkdownReadingLayout.maximumTextContainerWidth(fontScale: 1.4), 1_260)
+        XCTAssertEqual(
+            MarkdownReadingLayout.maximumTextContainerWidth(fontScale: 100),
+            900 * MarkdownFontScalePreference.maximumScale
+        )
+    }
+
     func testFontScalePreferencePersistsAndClampsValues() throws {
         let suiteName = "com.cseibert.MarkdownPreviewTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
