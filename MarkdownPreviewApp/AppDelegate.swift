@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         AppearanceController.shared.apply()
+        DockVisibilityController.shared.apply()
         NSApp.mainMenu = makeMainMenu()
     }
 
@@ -90,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
                 NSAlert(error: error).runModal()
             }
         }
+        if openedAny, !DockVisibilityController.shared.showsDockItem {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         completion?(openedAny)
     }
 
@@ -106,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         if settingsController == nil {
             settingsController = SettingsWindowController(
                 fontScale: .shared,
-                appearance: .shared
+                appearance: .shared,
+                dockVisibility: .shared
             )
         }
         settingsController?.showWindow(sender)

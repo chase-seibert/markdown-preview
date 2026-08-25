@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class MarkdownViewController: NSViewController {
-    private let source: String
+    private var source: String
     private let textView = MarkdownTextView()
 
     init(source: String) {
@@ -70,6 +70,11 @@ final class MarkdownViewController: NSViewController {
     }
 
     @objc private func fontScaleDidChange(_ notification: Notification) {
+        render()
+    }
+
+    func updateSource(_ source: String) {
+        self.source = source
         render()
     }
 

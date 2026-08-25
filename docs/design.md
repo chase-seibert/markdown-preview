@@ -9,6 +9,8 @@ window chrome. Files always use separate windows: automatic window tabbing is
 disabled, and document windows reject tabbing. File operations live in the File
 menu, copy variants in the Edit menu, and reading size in the View menu. A
 compact Settings window provides persistent appearance and text-size controls.
+It also lets users hide the application icon from the Dock and app switcher;
+opening a Markdown file brings the app forward when the icon is hidden.
 
 Document colors are semantic system colors. The appearance setting can follow
 the system or force Light or Dark across the application. Headings, body text,

@@ -10,6 +10,7 @@ window, with no project or folder model.
 - Opens `.md`, `.markdown`, `.mdown`, and `.mkd` files from Finder's **Open
   With** menu.
 - Includes a Quick Look preview extension for Finder's Spacebar preview.
+- Automatically refreshes open previews when the source file changes on disk.
 - Native selectable rendering with persistent System, Light, and Dark modes.
 - Separate, non-tabbed windows for every open file.
 - Safe, persistent font scaling with **Command-+**, **Command--**, and

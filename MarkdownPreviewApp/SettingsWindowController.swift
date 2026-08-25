@@ -3,13 +3,21 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
-    convenience init(fontScale: FontScaleController, appearance: AppearanceController) {
-        let root = SettingsView(fontScale: fontScale, appearance: appearance)
+    convenience init(
+        fontScale: FontScaleController,
+        appearance: AppearanceController,
+        dockVisibility: DockVisibilityController
+    ) {
+        let root = SettingsView(
+            fontScale: fontScale,
+            appearance: appearance,
+            dockVisibility: dockVisibility
+        )
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Markdown Preview Settings"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 430, height: 240))
+        window.setContentSize(NSSize(width: 430, height: 290))
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)
@@ -19,6 +27,7 @@ final class SettingsWindowController: NSWindowController {
 private struct SettingsView: View {
     @ObservedObject var fontScale: FontScaleController
     @ObservedObject var appearance: AppearanceController
+    @ObservedObject var dockVisibility: DockVisibilityController
 
     var body: some View {
         Form {
@@ -71,6 +80,17 @@ private struct SettingsView: View {
                 }
             }
 
+            LabeledContent("Dock") {
+                Toggle(
+                    "Show application icon",
+                    isOn: Binding(
+                        get: { dockVisibility.showsDockItem },
+                        set: { dockVisibility.setShowsDockItem($0) }
+                    )
+                )
+                .toggleStyle(.switch)
+            }
+
             HStack {
                 Spacer()
                 Button("Reset") { fontScale.resetFontSize(nil) }
@@ -78,6 +98,6 @@ private struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(8)
-        .frame(minWidth: 410, minHeight: 220)
+        .frame(minWidth: 410, minHeight: 270)
     }
 }
