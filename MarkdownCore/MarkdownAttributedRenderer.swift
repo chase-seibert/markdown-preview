@@ -1,6 +1,11 @@
 import AppKit
 import Foundation
 
+public extension NSAttributedString.Key {
+    static let markdownTaskIndex = NSAttributedString.Key("MarkdownPreviewTaskIndex")
+    static let markdownTaskChecked = NSAttributedString.Key("MarkdownPreviewTaskChecked")
+}
+
 public struct MarkdownRenderOptions: Sendable {
     public enum Palette: Sendable {
         case screen
@@ -34,9 +39,16 @@ public struct MarkdownAttributedRenderer: Sendable {
         let output = NSMutableAttributedString()
         let bodySize = 17 * options.fontScale
         let colors = Colors(options.palette)
+        var nextTaskIndex = 0
 
         for block in parser.parse(source) {
-            append(block, to: output, bodySize: bodySize, colors: colors)
+            append(
+                block,
+                to: output,
+                bodySize: bodySize,
+                colors: colors,
+                nextTaskIndex: &nextTaskIndex
+            )
         }
 
         while output.string.hasSuffix("\n") {
@@ -47,11 +59,28 @@ public struct MarkdownAttributedRenderer: Sendable {
 
     @MainActor
     public func plainText(_ source: String) -> String {
-        render(source).string
+        let rendered = render(source)
+        var result = ""
+        rendered.enumerateAttributes(
+            in: NSRange(location: 0, length: rendered.length)
+        ) { attributes, range, _ in
+            if let checked = attributes[.markdownTaskChecked] as? Bool {
+                result += checked ? "☑︎" : "☐"
+            } else {
+                result += (rendered.string as NSString).substring(with: range)
+            }
+        }
+        return result
     }
 
     @MainActor
-    private func append(_ block: MarkdownBlock, to output: NSMutableAttributedString, bodySize: CGFloat, colors: Colors) {
+    private func append(
+        _ block: MarkdownBlock,
+        to output: NSMutableAttributedString,
+        bodySize: CGFloat,
+        colors: Colors,
+        nextTaskIndex: inout Int
+    ) {
         switch block {
         case let .heading(level, text):
             let multipliers: [CGFloat] = [2.0, 1.6, 1.35, 1.2, 1.1, 1.0]
@@ -70,10 +99,24 @@ public struct MarkdownAttributedRenderer: Sendable {
             appendNewline(to: output, font: font)
 
         case let .unorderedList(items):
-            appendList(items, ordered: false, to: output, bodySize: bodySize, colors: colors)
+            appendList(
+                items,
+                ordered: false,
+                to: output,
+                bodySize: bodySize,
+                colors: colors,
+                nextTaskIndex: &nextTaskIndex
+            )
 
         case let .orderedList(items):
-            appendList(items, ordered: true, to: output, bodySize: bodySize, colors: colors)
+            appendList(
+                items,
+                ordered: true,
+                to: output,
+                bodySize: bodySize,
+                colors: colors,
+                nextTaskIndex: &nextTaskIndex
+            )
 
         case let .blockquote(blocks):
             let start = output.length
@@ -82,7 +125,13 @@ public struct MarkdownAttributedRenderer: Sendable {
                     string: "▍ ",
                     attributes: [.font: NSFont.systemFont(ofSize: bodySize), .foregroundColor: colors.secondary]
                 ))
-                append(quotedBlock, to: output, bodySize: bodySize, colors: colors)
+                append(
+                    quotedBlock,
+                    to: output,
+                    bodySize: bodySize,
+                    colors: colors,
+                    nextTaskIndex: &nextTaskIndex
+                )
             }
             if output.length > start {
                 let range = NSRange(location: start, length: output.length - start)
@@ -132,28 +181,83 @@ public struct MarkdownAttributedRenderer: Sendable {
         ordered: Bool,
         to output: NSMutableAttributedString,
         bodySize: CGFloat,
-        colors: Colors
+        colors: Colors,
+        nextTaskIndex: inout Int
     ) {
         let font = NSFont.systemFont(ofSize: bodySize)
         for (index, item) in items.enumerated() {
             let marker: String
-            if let checkbox = item.checkbox {
-                marker = checkbox ? "☑︎" : "☐"
+            if item.checkbox != nil {
+                marker = "\u{FFFC}"
             } else if ordered {
                 marker = "\(item.ordinal ?? index + 1)."
             } else {
                 marker = item.depth.isMultiple(of: 2) ? "•" : "◦"
             }
-            let prefix = String(repeating: "    ", count: item.depth) + marker + "  "
+            let indentation = String(repeating: "    ", count: item.depth)
+            let prefix = indentation + marker + (item.checkbox == nil ? "  " : "\t")
             let value = NSMutableAttributedString(
                 string: prefix,
                 attributes: [.font: font, .foregroundColor: colors.secondary]
             )
+            if item.checkbox != nil {
+                let markerLocation = (indentation as NSString).length
+                let markerRange = NSRange(location: markerLocation, length: 1)
+                let markerImage = taskMarkerImage(
+                    checked: item.checkbox == true,
+                    size: bodySize * 0.78,
+                    color: colors.secondary
+                )
+                let attachment = NSTextAttachment()
+                attachment.image = markerImage
+                let markerDimension = bodySize * 0.78
+                attachment.bounds = NSRect(
+                    x: 0,
+                    y: (bodySize - markerDimension) / 2,
+                    width: markerDimension,
+                    height: markerDimension
+                )
+                value.replaceCharacters(
+                    in: markerRange,
+                    with: NSAttributedString(attachment: attachment)
+                )
+                value.addAttribute(
+                    .markdownTaskIndex,
+                    value: nextTaskIndex,
+                    range: markerRange
+                )
+                value.addAttribute(
+                    .markdownTaskChecked,
+                    value: item.checkbox == true,
+                    range: markerRange
+                )
+                nextTaskIndex += 1
+            }
             value.append(inline(item.text, font: font, colors: colors))
             let style = NSMutableParagraphStyle()
             let indent = bodySize * CGFloat(1.7 + Double(item.depth) * 1.25)
             style.firstLineHeadIndent = bodySize * CGFloat(Double(item.depth) * 1.25)
             style.headIndent = indent
+            if item.checkbox != nil {
+                let indentationWidth = NSAttributedString(
+                    string: indentation,
+                    attributes: [.font: font]
+                ).size().width
+                let markerWidth = max(
+                    bodySize * 0.78,
+                    bodySize * 0.78
+                )
+                let spacingWidth = NSAttributedString(
+                    string: "  ",
+                    attributes: [.font: font]
+                ).size().width
+                style.tabStops = [
+                    NSTextTab(
+                        textAlignment: .left,
+                        location: style.firstLineHeadIndent + indentationWidth + markerWidth + spacingWidth
+                    ),
+                ]
+            }
             style.paragraphSpacing = index == items.count - 1 ? bodySize * 0.75 : bodySize * 0.2
             style.lineHeightMultiple = 1.28
             value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
@@ -237,6 +341,42 @@ public struct MarkdownAttributedRenderer: Sendable {
             ], range: range)
         }
         return value
+    }
+
+    @MainActor
+    private func taskMarkerImage(checked: Bool, size: CGFloat, color: NSColor) -> NSImage {
+        let image = NSImage(size: NSSize(width: size, height: size))
+        image.lockFocus()
+        color.setStroke()
+
+        let strokeWidth = max(1, size * 0.1)
+        let box = NSRect(
+            x: strokeWidth / 2,
+            y: strokeWidth / 2,
+            width: size - strokeWidth,
+            height: size - strokeWidth
+        )
+        let boxPath = NSBezierPath(
+            roundedRect: box,
+            xRadius: size * 0.15,
+            yRadius: size * 0.15
+        )
+        boxPath.lineWidth = strokeWidth
+        boxPath.stroke()
+
+        if checked {
+            let checkPath = NSBezierPath()
+            checkPath.lineWidth = strokeWidth
+            checkPath.lineCapStyle = .round
+            checkPath.lineJoinStyle = .round
+            checkPath.move(to: NSPoint(x: size * 0.24, y: size * 0.52))
+            checkPath.line(to: NSPoint(x: size * 0.44, y: size * 0.3))
+            checkPath.line(to: NSPoint(x: size * 0.78, y: size * 0.7))
+            checkPath.stroke()
+        }
+
+        image.unlockFocus()
+        return image
     }
 
     private func appendNewline(to output: NSMutableAttributedString, font: NSFont) {

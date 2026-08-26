@@ -29,6 +29,104 @@ final class MarkdownCoreTests: XCTestCase {
         XCTAssertTrue(blocks.contains(.table(headers: ["Name", "Value"], rows: [["One", "Two"]])))
     }
 
+    func testTaskListEditorTogglesOnlyTheSelectedSourceMarker() throws {
+        let source = "- [ ] First\r\n1. [X] Second\r\n> - [x] Quoted\r\n```\r\n- [ ] Example\r\n```\r\n"
+
+        XCTAssertEqual(
+            try XCTUnwrap(MarkdownTaskListEditor.togglingTask(at: 0, in: source)),
+            "- [x] First\r\n1. [X] Second\r\n> - [x] Quoted\r\n```\r\n- [ ] Example\r\n```\r\n"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MarkdownTaskListEditor.togglingTask(at: 1, in: source)),
+            "- [ ] First\r\n1. [ ] Second\r\n> - [x] Quoted\r\n```\r\n- [ ] Example\r\n```\r\n"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(MarkdownTaskListEditor.togglingTask(at: 2, in: source)),
+            "- [ ] First\r\n1. [X] Second\r\n> - [ ] Quoted\r\n```\r\n- [ ] Example\r\n```\r\n"
+        )
+        XCTAssertNil(MarkdownTaskListEditor.togglingTask(at: 3, in: source))
+        XCTAssertNil(MarkdownTaskListEditor.togglingTask(at: -1, in: source))
+    }
+
+    @MainActor
+    func testRenderedTaskMarkersCarrySourceIndices() {
+        let rendered = MarkdownAttributedRenderer().render(
+            "- [ ] First\n- Ordinary\n> 1. [x] Second"
+        )
+        var indices: [Int] = []
+        var markers: [String] = []
+        var states: [Bool] = []
+        rendered.enumerateAttribute(
+            .markdownTaskIndex,
+            in: NSRange(location: 0, length: rendered.length)
+        ) { value, range, _ in
+            guard let index = value as? Int else { return }
+            indices.append(index)
+            markers.append((rendered.string as NSString).substring(with: range))
+            states.append(rendered.attribute(.markdownTaskChecked, at: range.location, effectiveRange: nil) as? Bool ?? false)
+        }
+
+        XCTAssertEqual(indices, [0, 1])
+        XCTAssertEqual(markers, ["\u{FFFC}", "\u{FFFC}"])
+        XCTAssertEqual(states, [false, true])
+    }
+
+    @MainActor
+    func testCheckedAndUncheckedTaskTextUsesTheSameHorizontalPosition() {
+        let rendered = MarkdownAttributedRenderer().render(
+            "- [ ] First task\n- [x] Second task"
+        )
+        let storage = NSTextStorage(attributedString: rendered)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: NSSize(width: 1_000, height: 1_000))
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let firstRange = (rendered.string as NSString).range(of: "First task")
+        let secondRange = (rendered.string as NSString).range(of: "Second task")
+        let firstGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: firstRange,
+            actualCharacterRange: nil
+        )
+        let secondGlyphRange = layoutManager.glyphRange(
+            forCharacterRange: secondRange,
+            actualCharacterRange: nil
+        )
+        let firstRect = layoutManager.boundingRect(forGlyphRange: firstGlyphRange, in: textContainer)
+        let secondRect = layoutManager.boundingRect(forGlyphRange: secondGlyphRange, in: textContainer)
+
+        XCTAssertEqual(firstRect.minX, secondRect.minX, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testCheckedAndUncheckedTaskRowsUseTheSameLineHeight() {
+        func lineHeight(for source: String, text: String) -> CGFloat {
+            let rendered = MarkdownAttributedRenderer().render(source)
+            let storage = NSTextStorage(attributedString: rendered)
+            let layoutManager = NSLayoutManager()
+            let textContainer = NSTextContainer(size: NSSize(width: 1_000, height: 1_000))
+            storage.addLayoutManager(layoutManager)
+            layoutManager.addTextContainer(textContainer)
+            layoutManager.ensureLayout(for: textContainer)
+            let range = (rendered.string as NSString).range(of: text)
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: range,
+                actualCharacterRange: nil
+            )
+            return layoutManager.lineFragmentRect(
+                forGlyphAt: glyphRange.location,
+                effectiveRange: nil
+            ).height
+        }
+
+        XCTAssertEqual(
+            lineHeight(for: "- [ ] First task", text: "First task"),
+            lineHeight(for: "- [x] First task", text: "First task"),
+            accuracy: 0.01
+        )
+    }
+
     func testHTMLIsSemanticAndEscapesRawHTML() {
         let html = MarkdownHTMLRenderer().document(
             source: "# Hello\n\n<script>alert(1)</script> **world**"
@@ -88,6 +186,14 @@ final class MarkdownCoreTests: XCTestCase {
         XCTAssertTrue(text.contains("•  Item"))
         XCTAssertFalse(text.contains("**"))
         XCTAssertFalse(text.contains("# Heading"))
+    }
+
+    @MainActor
+    func testRenderedPlainTextPreservesTaskMarkerStates() {
+        let text = MarkdownAttributedRenderer().plainText("- [ ] First\n- [x] Second")
+        XCTAssertTrue(text.contains("☐\tFirst"))
+        XCTAssertTrue(text.contains("☑︎\tSecond"))
+        XCTAssertFalse(text.contains("\u{FFFC}"))
     }
 
     @MainActor

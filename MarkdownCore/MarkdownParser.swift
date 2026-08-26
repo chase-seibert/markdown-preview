@@ -228,3 +228,61 @@ public struct MarkdownParser: Sendable {
     }
 }
 
+public enum MarkdownTaskListEditor {
+    public static func togglingTask(at taskIndex: Int, in source: String) -> String? {
+        guard taskIndex >= 0 else { return nil }
+        let expression = try! NSRegularExpression(
+            pattern: #"^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[([ xX])\]"#
+        )
+        var lines = source.components(separatedBy: "\n")
+        var currentTaskIndex = 0
+        var activeFence: (character: Character, length: Int)?
+
+        for lineIndex in lines.indices {
+            let line = lines[lineIndex]
+            if let marker = fenceMarker(in: line) {
+                if let currentFence = activeFence {
+                    if marker.character == currentFence.character,
+                       marker.length >= currentFence.length
+                    {
+                        activeFence = nil
+                    }
+                } else {
+                    activeFence = marker
+                }
+                continue
+            }
+            guard activeFence == nil else { continue }
+
+            let fullRange = NSRange(location: 0, length: (line as NSString).length)
+            guard let match = expression.firstMatch(in: line, range: fullRange) else { continue }
+            defer { currentTaskIndex += 1 }
+            guard currentTaskIndex == taskIndex,
+                  let stateRange = Range(match.range(at: 1), in: line)
+            else {
+                continue
+            }
+
+            let checked = line[stateRange] != " "
+            lines[lineIndex].replaceSubrange(stateRange, with: checked ? " " : "x")
+            return lines.joined(separator: "\n")
+        }
+        return nil
+    }
+
+    private static func fenceMarker(in line: String) -> (character: Character, length: Int)? {
+        var remainder = line[...]
+        while true {
+            remainder = remainder.drop(while: { $0 == " " || $0 == "\t" })
+            guard remainder.first == ">" else { break }
+            remainder = remainder.dropFirst()
+            if remainder.first == " " { remainder = remainder.dropFirst() }
+        }
+        remainder = remainder.drop(while: { $0 == " " || $0 == "\t" })
+        guard let character = remainder.first, character == "`" || character == "~" else {
+            return nil
+        }
+        let length = remainder.prefix(while: { $0 == character }).count
+        return length >= 3 ? (character, length) : nil
+    }
+}

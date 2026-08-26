@@ -17,23 +17,29 @@ final class MarkdownDocument: NSDocument {
     override var isDocumentEdited: Bool { false }
 
     override func read(from data: Data, ofType typeName: String) throws {
+        source = try Self.decodedSource(from: data).value
+    }
+
+    private nonisolated static func decodedSource(
+        from data: Data
+    ) throws -> (value: String, encoding: String.Encoding) {
         if let utf8 = String(data: data, encoding: .utf8) {
-            source = utf8
-            return
+            return (utf8, .utf8)
         }
 
         var converted: NSString?
         var lossy = ObjCBool(false)
-        guard NSString.stringEncoding(
+        let rawEncoding = NSString.stringEncoding(
             for: data,
             encodingOptions: nil,
             convertedString: &converted,
             usedLossyConversion: &lossy
-        ) != 0, let converted
+        )
+        guard rawEncoding != 0, let converted
         else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
-        source = converted as String
+        return (converted as String, String.Encoding(rawValue: rawEncoding))
     }
 
     override func data(ofType typeName: String) throws -> Data {
@@ -41,7 +47,13 @@ final class MarkdownDocument: NSDocument {
     }
 
     override func makeWindowControllers() {
-        let contentController = MarkdownViewController(source: source, documentURL: fileURL)
+        let contentController = MarkdownViewController(
+            source: source,
+            documentURL: fileURL,
+            onTaskToggle: { [weak self] taskIndex in
+                self?.toggleTask(at: taskIndex)
+            }
+        )
         let window = NSWindow(contentViewController: contentController)
         window.setContentSize(NSSize(width: 780, height: 760))
         window.minSize = NSSize(width: 460, height: 320)
@@ -55,6 +67,70 @@ final class MarkdownDocument: NSDocument {
         let controller = NSWindowController(window: window)
         addWindowController(controller)
         beginExternalChangeObservation()
+    }
+
+    private func toggleTask(at taskIndex: Int) {
+        guard let fileURL else { return }
+        externalReloadTask?.cancel()
+
+        var updatedSource: String?
+        var operationError: Error?
+        var coordinationError: NSError?
+        let coordinator = NSFileCoordinator(filePresenter: self)
+        coordinator.coordinate(
+            writingItemAt: fileURL,
+            options: .forReplacing,
+            error: &coordinationError
+        ) { coordinatedURL in
+            do {
+                let data = try Data(contentsOf: coordinatedURL)
+                let decoded = try Self.decodedSource(from: data)
+                guard let toggled = MarkdownTaskListEditor.togglingTask(
+                    at: taskIndex,
+                    in: decoded.value
+                ) else {
+                    return
+                }
+                guard let encoded = toggled.data(
+                    using: decoded.encoding,
+                    allowLossyConversion: false
+                ) else {
+                    throw CocoaError(.fileWriteInapplicableStringEncoding)
+                }
+                try encoded.write(to: coordinatedURL, options: .atomic)
+                updatedSource = toggled
+            } catch {
+                operationError = error
+            }
+        }
+
+        if let operationError {
+            presentTaskWriteError(operationError)
+            return
+        }
+        if let coordinationError {
+            presentTaskWriteError(coordinationError)
+            return
+        }
+        guard let updatedSource else {
+            scheduleExternalReload()
+            return
+        }
+
+        source = updatedSource
+        lastLoadedFileSignature = Self.fileSignature(for: fileURL)
+        for controller in windowControllers {
+            (controller.contentViewController as? MarkdownViewController)?.updateSource(source)
+        }
+    }
+
+    private func presentTaskWriteError(_ error: Error) {
+        let alert = NSAlert(error: error)
+        if let window = windowControllers.first?.window {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     nonisolated override func presentedItemDidChange() {

@@ -5,11 +5,13 @@ import Foundation
 final class MarkdownViewController: NSViewController, NSTextViewDelegate {
     private var source: String
     private var documentURL: URL?
+    private let onTaskToggle: (Int) -> Void
     private let textView = MarkdownTextView()
 
-    init(source: String, documentURL: URL?) {
+    init(source: String, documentURL: URL?, onTaskToggle: @escaping (Int) -> Void) {
         self.source = source
         self.documentURL = documentURL
+        self.onTaskToggle = onTaskToggle
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -70,6 +72,7 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        textView.onTaskToggle = onTaskToggle
     }
 
     @objc private func fontScaleDidChange(_ notification: Notification) {
@@ -124,11 +127,13 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
             scrollView.contentView.scroll(to: visibleOrigin)
             scrollView.reflectScrolledClipView(scrollView.contentView)
         }
+        textView.window?.invalidateCursorRects(for: textView)
     }
 }
 
 @MainActor
 private final class MarkdownTextView: NSTextView {
+    var onTaskToggle: ((Int) -> Void)?
     var fontScale = CGFloat(MarkdownFontScalePreference.defaultScale) {
         didSet { updateReadingInsets() }
     }
@@ -140,6 +145,62 @@ private final class MarkdownTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         updateReadingInsets()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let taskIndex = taskIndex(at: event) else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        onTaskToggle?(taskIndex)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let textStorage, let layoutManager, let textContainer else { return }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let origin = textContainerOrigin
+        textStorage.enumerateAttribute(
+            .markdownTaskIndex,
+            in: NSRange(location: 0, length: textStorage.length)
+        ) { value, characterRange, _ in
+            guard value != nil else { return }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: characterRange,
+                actualCharacterRange: nil
+            )
+            var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            rect.origin.x += origin.x
+            rect.origin.y += origin.y
+            addCursorRect(rect.insetBy(dx: -2, dy: -2), cursor: .pointingHand)
+        }
+    }
+
+    private func taskIndex(at event: NSEvent) -> Int? {
+        guard let textStorage, let layoutManager, let textContainer else { return nil }
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        let origin = textContainerOrigin
+        let containerPoint = NSPoint(x: viewPoint.x - origin.x, y: viewPoint.y - origin.y)
+        guard containerPoint.x >= 0, containerPoint.y >= 0 else { return nil }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        guard glyphIndex < layoutManager.numberOfGlyphs else { return nil }
+        let glyphRect = layoutManager.boundingRect(
+            forGlyphRange: NSRange(location: glyphIndex, length: 1),
+            in: textContainer
+        )
+        guard glyphRect.insetBy(dx: -2, dy: -2).contains(containerPoint) else { return nil }
+
+        let characterIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        guard characterIndex < textStorage.length else { return nil }
+        return textStorage.attribute(
+            .markdownTaskIndex,
+            at: characterIndex,
+            effectiveRange: nil
+        ) as? Int
     }
 
     private func updateReadingInsets() {

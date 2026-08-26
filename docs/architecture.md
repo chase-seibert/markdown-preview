@@ -35,6 +35,13 @@ opens the target immediately after approval. Later links covered by that folder
 open without prompting, including links initiated in sandboxed Finder Quick
 Look previews. Other links retain AppKit's default behavior.
 
+The attributed renderer tags each rendered task marker with its source-order
+task index. The app text view hit-tests those tagged ranges and asks its
+document to toggle the matching Markdown marker. The document coordinates the
+write, rereads the latest on-disk contents before editing, preserves the source
+encoding and line endings, and atomically replaces the file. Quick Look renders
+the same marker attributes but does not attach an editing action.
+
 Markdown parsing deliberately treats raw HTML as text. This keeps previews
 self-contained and prevents a viewed document from injecting scripts or
 loading remote content.

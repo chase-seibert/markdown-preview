@@ -29,6 +29,11 @@ their standard system behavior. The first local navigation into a folder asks
 the reader to allow that folder; subsequent links covered by the saved access
 open directly.
 
+Task-list markers are interactive in app document windows. Clicking a rendered
+checkbox toggles its matching `[ ]`, `[x]`, or `[X]` source marker and writes the
+change immediately while leaving every other source character intact. Finder
+Quick Look previews remain read-only.
+
 Standard Copy preserves a selected range. With no selection, Command-C copies
 the complete rendered document as rich HTML/RTF plus a plain-text fallback.
 Copy for Chat uses a deliberately simpler HTML dialect for Slack and similar

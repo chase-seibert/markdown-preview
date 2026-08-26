@@ -10,6 +10,8 @@
   rendered document is comfortable to read.
 - As a reader, I want relative links to Markdown files to open the linked file
   in the preview app, so that I can navigate related local documentation.
+- As a reader, I want to check and uncheck task-list items in the app, so that
+  the corresponding Markdown source file is updated without opening an editor.
 - As a reader, I want selectable content and a persistent System/Light/Dark
   appearance choice, so that the viewer fits normal macOS workflows.
 - As a collaborator, I want source, plain-text, and rich-text copy commands, so
