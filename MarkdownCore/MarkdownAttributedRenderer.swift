@@ -107,7 +107,15 @@ public struct MarkdownAttributedRenderer: Sendable {
             applyParagraphStyle(to: value, before: level == 1 ? bodySize * 0.35 : bodySize * 0.2, after: bodySize * 0.35)
             value.addAttribute(.markdownHeadingLevel, value: level, range: NSRange(location: 0, length: value.length))
             output.append(value)
-            appendNewline(to: output, font: font)
+            appendNewline(
+                to: output,
+                font: font,
+                attributes: [
+                    .markdownBlockKind: "heading",
+                    .markdownHeadingLevel: level,
+                    .markdownQuoteDepth: quoteDepth,
+                ]
+            )
 
         case let .paragraph(text):
             let font = NSFont.systemFont(ofSize: bodySize)
@@ -455,8 +463,14 @@ public struct MarkdownAttributedRenderer: Sendable {
         return image
     }
 
-    private func appendNewline(to output: NSMutableAttributedString, font: NSFont) {
-        output.append(NSAttributedString(string: "\n", attributes: [.font: font]))
+    private func appendNewline(
+        to output: NSMutableAttributedString,
+        font: NSFont,
+        attributes: [NSAttributedString.Key: Any] = [:]
+    ) {
+        var newlineAttributes = attributes
+        newlineAttributes[.font] = font
+        output.append(NSAttributedString(string: "\n", attributes: newlineAttributes))
     }
 
     private func applyParagraphStyle(

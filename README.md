@@ -2,9 +2,9 @@
 
 A small, native macOS document viewer for Markdown. Each file opens in its own window, with no project or folder model.
 
-Markdown *Preview* showing a rendered *README*
-
 # Highlights
+
+Markdown Preview showing a rendered *README*
 
 - Opens .md, .markdown, .mdown, and .mkd files from Finder's \*\*Open
 

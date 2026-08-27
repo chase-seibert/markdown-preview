@@ -172,7 +172,8 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard !isRendering else { return }
-        textView.normalizeTypedListMarkers()
+        textView.removeEmptyRenderedElements()
+        textView.normalizeTypedMarkers()
         let proposedSource = MarkdownSourceSerializer().serialize(textView.attributedString())
         switch onSourceChange(proposedSource) {
         case .saved:
@@ -475,7 +476,7 @@ private final class MarkdownTextView: NSTextView {
         )
     }
 
-    func normalizeTypedListMarkers() {
+    func normalizeTypedMarkers() {
         guard let textStorage, textStorage.length > 0 else { return }
 
         var location = 0
@@ -501,6 +502,19 @@ private final class MarkdownTextView: NSTextView {
             } else if listMarker == nil,
                       blockKind(at: start) == "paragraph"
             {
+                if let headingToken = typedHeadingToken(at: start, before: contentEnd) {
+                    convertToHeading(
+                        token: headingToken,
+                        at: start,
+                        lineRange: lineRange
+                    )
+                    let updatedLineRange = (string as NSString).paragraphRange(
+                        for: NSRange(location: lineRange.location, length: 0)
+                    )
+                    location = max(location + 1, NSMaxRange(updatedLineRange))
+                    continue
+                }
+
                 if let taskToken = typedTaskToken(at: start, before: contentEnd) {
                     convertToTask(token: taskToken, at: start, existingList: nil)
                     let updatedLineRange = (string as NSString).paragraphRange(
@@ -526,11 +540,53 @@ private final class MarkdownTextView: NSTextView {
         renumberTaskMarkers()
     }
 
+    func removeEmptyRenderedElements() {
+        guard let textStorage, textStorage.length > 0 else { return }
+
+        var location = 0
+        var emptyRanges: [NSRange] = []
+        while location < textStorage.length {
+            let lineRange = (string as NSString).paragraphRange(
+                for: NSRange(location: location, length: 0)
+            )
+            let listMarker = self.listMarker(at: location)
+            let contentStart = listMarker?.contentStart ?? editableLineStart(lineRange)
+            let kind = blockKind(at: contentStart)
+            if kind == "heading" || kind == "list" {
+                let contentEnd = contentEnd(of: lineRange)
+                let content = (string as NSString).substring(
+                    with: NSRange(
+                        location: contentStart,
+                        length: max(0, contentEnd - contentStart)
+                    )
+                )
+                if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    emptyRanges.append(lineRange)
+                }
+            }
+            let next = NSMaxRange(lineRange)
+            if next <= location { break }
+            location = next
+        }
+
+        guard !emptyRanges.isEmpty else { return }
+        textStorage.beginEditing()
+        for range in emptyRanges.reversed() {
+            textStorage.deleteCharacters(in: range)
+        }
+        textStorage.endEditing()
+    }
+
     private struct TypedToken {
         let length: Int
         let ordered: Bool
         let ordinal: Int
         let checked: Bool
+    }
+
+    private struct TypedHeadingToken {
+        let length: Int
+        let level: Int
     }
 
     private func editableLineStart(_ lineRange: NSRange) -> Int {
@@ -551,6 +607,18 @@ private final class MarkdownTextView: NSTextView {
             at: min(location, textStorage.length - 1),
             effectiveRange: nil
         ) as? String
+    }
+
+    private func typedHeadingToken(at location: Int, before end: Int) -> TypedHeadingToken? {
+        guard let textStorage, location < end else { return nil }
+        let remaining = (textStorage.string as NSString).substring(
+            with: NSRange(location: location, length: end - location)
+        )
+        let hashes = remaining.prefix(while: { $0 == "#" })
+        guard (1...3).contains(hashes.count), hashes.count < remaining.count else { return nil }
+        let nextIndex = remaining.index(remaining.startIndex, offsetBy: hashes.count)
+        guard remaining[nextIndex].isWhitespace else { return nil }
+        return TypedHeadingToken(length: hashes.count + 1, level: hashes.count)
     }
 
     private func typedTaskToken(at location: Int, before end: Int) -> TypedToken? {
@@ -622,6 +690,75 @@ private final class MarkdownTextView: NSTextView {
             listAttributes[.markdownQuoteDepth] = quoteDepth
         }
         textStorage.addAttributes(listAttributes, range: updatedLineRange)
+    }
+
+    private func convertToHeading(
+        token: TypedHeadingToken,
+        at location: Int,
+        lineRange: NSRange
+    ) {
+        guard let textStorage else { return }
+        let attributes = textStorage.attributes(at: location, effectiveRange: nil)
+        let bodyFont = attributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 17)
+        textStorage.replaceCharacters(
+            in: NSRange(location: location, length: token.length),
+            with: ""
+        )
+
+        let updatedLineRange = (string as NSString).paragraphRange(
+            for: NSRange(location: lineRange.location, length: 0)
+        )
+        let contentEnd = contentEnd(of: updatedLineRange)
+        let contentRange = NSRange(
+            location: location,
+            length: max(0, contentEnd - location)
+        )
+        let headingFont = headingFont(for: bodyFont, level: token.level)
+        if contentRange.length > 0 {
+            textStorage.enumerateAttribute(.markdownInlineStyle, in: contentRange) { value, range, _ in
+                let style = (value as? Int) ?? 0
+                var styledFont = headingFont
+                if style & InlineStyle.bold.rawValue != 0 {
+                    styledFont = NSFontManager.shared.convert(styledFont, toHaveTrait: .boldFontMask)
+                }
+                if style & InlineStyle.italic.rawValue != 0 {
+                    styledFont = NSFontManager.shared.convert(styledFont, toHaveTrait: .italicFontMask)
+                }
+                textStorage.addAttribute(.font, value: styledFont, range: range)
+            }
+            textStorage.addAttributes([
+                .markdownBlockKind: "heading",
+                .markdownHeadingLevel: token.level,
+                .markdownProtected: false,
+            ], range: updatedLineRange)
+        }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.paragraphSpacingBefore = token.level == 1 ? bodyFont.pointSize * 0.35 : bodyFont.pointSize * 0.2
+        paragraphStyle.paragraphSpacing = bodyFont.pointSize * 0.35
+        paragraphStyle.lineHeightMultiple = 1.2
+        textStorage.addAttribute(.paragraphStyle, value: paragraphStyle, range: updatedLineRange)
+
+        var newTypingAttributes = attributes
+        newTypingAttributes[.font] = headingFont
+        newTypingAttributes[.markdownBlockKind] = "heading"
+        newTypingAttributes[.markdownHeadingLevel] = token.level
+        newTypingAttributes[.markdownInlineStyle] = 0
+        newTypingAttributes[.markdownProtected] = false
+        typingAttributes = newTypingAttributes
+    }
+
+    private func headingFont(for bodyFont: NSFont, level: Int) -> NSFont {
+        let multiplier: CGFloat
+        switch level {
+        case 1: multiplier = 2.0
+        case 2: multiplier = 1.6
+        default: multiplier = 1.35
+        }
+        return NSFont.systemFont(
+            ofSize: bodyFont.pointSize * multiplier,
+            weight: level <= 2 ? .bold : .semibold
+        )
     }
 
     private func convertToList(token: TypedToken, at location: Int, lineRange: NSRange) {

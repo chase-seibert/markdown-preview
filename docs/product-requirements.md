@@ -30,5 +30,6 @@
   conflict prompts when another app changes the file while I am editing.
 - As an editor, I want to edit text in existing headings, quotes, code blocks,
   and table cells, plus apply bold/italics and create, remove, and continue
-  bulleted or numbered list items. I do not need to create headings, quotes,
-  code blocks, tables, table rows, or images.
+  bulleted or numbered list items. Typing `# `, `## `, or `### ` at the start
+  of a paragraph creates a heading. I do not need to create quotes, code
+  blocks, tables, table rows, or images.

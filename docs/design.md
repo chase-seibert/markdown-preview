@@ -45,8 +45,9 @@ paragraphs, lists, code blocks, and section contents compact.
 Document windows are preview-first while remaining directly editable as native
 rich text surfaces. Text changes, bold/italics, and list operations are
 serialized back to Markdown and written atomically after each change. Existing
-headings, quotes, code, and table-cell text can be edited; creating new
-instances of those structures, table rows, or images is outside the lightweight
+headings, quotes, code, and table-cell text can be edited. Typing `# `, `## `,
+or `### ` at the start of a paragraph creates a rendered heading; creating new
+quote, code, table, table-row, or image structures is outside the lightweight
 editor. Command-B and Command-I toggle inline emphasis, and Enter/Backspace
 plus Format menu commands manage list rows. Native undo/redo is available at
 all times. If the file changes externally, the editor asks whether to keep the
