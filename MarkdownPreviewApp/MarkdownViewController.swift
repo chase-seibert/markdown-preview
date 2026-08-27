@@ -195,7 +195,7 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
         shouldChangeTextIn range: NSRange,
         replacementString text: String?
     ) -> Bool {
-        (textView as? MarkdownTextView)?.allowsChange(in: range) ?? true
+        (textView as? MarkdownTextView)?.allowsChange(in: range, replacementString: text) ?? true
     }
 
 }
@@ -804,8 +804,14 @@ private final class MarkdownTextView: NSTextView {
         ]) { _, new in new }
     }
 
-    func allowsChange(in range: NSRange) -> Bool {
+    func allowsChange(in range: NSRange, replacementString: String?) -> Bool {
         guard !allowProtectedMutation, let textStorage else { return true }
+        // Deleting a selection is an intentional way to remove complete
+        // rendered list items, including their protected bullet or checkbox
+        // markers. Keep protection for typing or pasting over those markers.
+        if range.length > 0, replacementString == nil || replacementString?.isEmpty == true {
+            return true
+        }
         if range.length > 0 {
             var blocked = false
             textStorage.enumerateAttribute(.markdownProtected, in: range) { value, _, stop in
