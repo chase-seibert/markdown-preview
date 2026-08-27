@@ -134,6 +134,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         pasteboard.setString(document.source, forType: .string)
     }
 
+    @objc func toggleBold(_ sender: Any?) {
+        currentViewController?.toggleBold(sender)
+    }
+
+    @objc func toggleItalic(_ sender: Any?) {
+        currentViewController?.toggleItalic(sender)
+    }
+
+    @objc func toggleBulletedList(_ sender: Any?) {
+        currentViewController?.toggleBulletedList(sender)
+    }
+
+    @objc func toggleNumberedList(_ sender: Any?) {
+        currentViewController?.toggleNumberedList(sender)
+    }
+
+    @objc func undo(_ sender: Any?) {
+        currentViewController?.undo(sender)
+    }
+
+    @objc func redo(_ sender: Any?) {
+        currentViewController?.redo(sender)
+    }
+
     @objc func copy(_ sender: Any?) {
         guard let document = currentDocument else { return }
         if let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
@@ -185,9 +209,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     @objc func exportPDF(_ sender: Any?) { export(.pdf) }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(undo(_:)) {
+            return currentViewController?.canUndo == true
+        }
+        if menuItem.action == #selector(redo(_:)) {
+            return currentViewController?.canRedo == true
+        }
+        if [
+            #selector(toggleBold(_:)), #selector(toggleItalic(_:)),
+            #selector(toggleBulletedList(_:)), #selector(toggleNumberedList(_:)),
+        ].contains(menuItem.action) {
+            return currentDocument != nil
+        }
         let actionsRequiringDocument: [Selector] = [
             #selector(copy(_:)), #selector(copySource(_:)), #selector(copyPlainText(_:)),
             #selector(copyRichText(_:)), #selector(copyForChat(_:)),
+            #selector(toggleBold(_:)), #selector(toggleItalic(_:)),
+            #selector(toggleBulletedList(_:)), #selector(toggleNumberedList(_:)),
+            #selector(undo(_:)), #selector(redo(_:)),
             #selector(exportMarkdown(_:)), #selector(exportPlainText(_:)), #selector(exportRichText(_:)),
             #selector(exportHTML(_:)), #selector(exportPDF(_:)),
         ]
@@ -231,6 +270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         return (controller.currentDocument as? MarkdownDocument)
             ?? (NSApp.keyWindow?.windowController?.document as? MarkdownDocument)
             ?? (controller.documents.last as? MarkdownDocument)
+    }
+
+    private var currentViewController: MarkdownViewController? {
+        currentDocument?.windowControllers.first?.contentViewController as? MarkdownViewController
     }
 
     private var markdownTypes: [UTType] {
@@ -339,12 +382,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         let copy = edit.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "c")
         copy.target = self
         edit.addItem(.separator())
+        addItem("Undo", action: #selector(undo(_:)), key: "z", to: edit)
+        addItem("Redo", action: #selector(redo(_:)), key: "z", modifiers: [.command, .shift], to: edit)
+        edit.addItem(.separator())
         addItem("Copy Source Markdown", action: #selector(copySource(_:)), key: "c", modifiers: [.command, .shift], to: edit)
         addItem("Copy All as Plain Text", action: #selector(copyPlainText(_:)), key: "c", modifiers: [.command, .option], to: edit)
         addItem("Copy All as Rich Text", action: #selector(copyRichText(_:)), to: edit)
         addItem("Copy for Chat", action: #selector(copyForChat(_:)), key: "c", modifiers: [.command, .control], to: edit)
         edit.addItem(.separator())
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let format = NSMenu(title: "Format")
+        addItem("Bold", action: #selector(toggleBold(_:)), key: "b", to: format)
+        addItem("Italic", action: #selector(toggleItalic(_:)), key: "i", to: format)
+        format.addItem(.separator())
+        addItem("Bulleted List", action: #selector(toggleBulletedList(_:)), to: format)
+        addItem("Numbered List", action: #selector(toggleNumberedList(_:)), to: format)
+        edit.addItem(withTitle: "Format", action: nil, keyEquivalent: "").submenu = format
         let find = NSMenu(title: "Find")
         let findItem = find.addItem(withTitle: "Find…", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "f")
         findItem.tag = Int(NSFindPanelAction.showFindPanel.rawValue)
@@ -384,7 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     @objc private func showHelp(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "Markdown Preview"
-        alert.informativeText = "Open a Markdown file from Finder or File > Open. Use Command-+, Command--, and Command-0 to change reading size. Export and copy formats are available from the File and Edit menus."
+        alert.informativeText = "Open a Markdown file from Finder or File > Open. Markdown is always editable and saves as you type. Use Command-+, Command--, and Command-0 to change reading size. Export and copy formats are available from the File and Edit menus."
         alert.runModal()
     }
 

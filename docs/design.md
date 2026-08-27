@@ -7,7 +7,8 @@ normal selection, link interaction, scrolling, Find, and Services behavior.
 There is intentionally no sidebar, project switcher, status bar, or custom
 window chrome. Files always use separate windows: automatic window tabbing is
 disabled, and document windows reject tabbing. File operations live in the File
-menu, copy variants in the Edit menu, and reading size in the View menu. A
+menu, copy variants and editing commands in the Edit menu, and reading size in
+the View menu. A
 compact Settings window provides persistent appearance and text-size controls.
 It also lets users hide the application icon from the Dock and app switcher;
 opening a Markdown file brings the app forward when the icon is hidden.
@@ -40,3 +41,13 @@ Copy for Chat uses a deliberately simpler HTML dialect for Slack and similar
 editors: headings are bold lines rather than heading tags. It adds an explicit
 blank line after the document title and before later headings, while keeping
 paragraphs, lists, code blocks, and section contents compact.
+
+Document windows are preview-first while remaining directly editable as native
+rich text surfaces. Text changes, bold/italics, and list operations are
+serialized back to Markdown and written atomically after each change. Existing
+headings, quotes, code, and table-cell text can be edited; creating new
+instances of those structures, table rows, or images is outside the lightweight
+editor. Command-B and Command-I toggle inline emphasis, and Enter/Backspace
+plus Format menu commands manage list rows. Native undo/redo is available at
+all times. If the file changes externally, the editor asks whether to keep the
+local version or reload the external version.

@@ -24,3 +24,11 @@
   rendered document as rich text when nothing is selected.
 - As a collaborator, I want a chat-oriented copy command that preserves bold
   headings and section spacing when pasted into Slack-like composers.
+- As a document user, I want lightweight WYSIWYG editing directly in the
+  preview, so that I can make small Markdown changes without leaving the app.
+- As an editor, I want changes to save immediately, standard undo/redo, and
+  conflict prompts when another app changes the file while I am editing.
+- As an editor, I want to edit text in existing headings, quotes, code blocks,
+  and table cells, plus apply bold/italics and create, remove, and continue
+  bulleted or numbered list items. I do not need to create headings, quotes,
+  code blocks, tables, table rows, or images.

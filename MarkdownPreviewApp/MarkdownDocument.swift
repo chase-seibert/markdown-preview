@@ -5,13 +5,21 @@ import Foundation
 @MainActor
 @objc(MarkdownDocument)
 final class MarkdownDocument: NSDocument {
+    enum EditWriteResult {
+        case saved
+        case conflict
+        case failed(Error)
+    }
+
     // NSDocument's read/write overrides are imported as nonisolated in Swift 6.
     // AppKit serializes document loading before window creation, so this storage
     // is safe to bridge into the otherwise main-actor document object.
     nonisolated(unsafe) private(set) var source = ""
     private var lastLoadedFileSignature: FileSignature?
+    private var pendingSelfWrite: SelfWriteExpectation?
     private var externalReloadTask: Task<Void, Never>?
     private var fileWatcher: MarkdownFileWatcher?
+    private var isPresentingConflict = false
 
     override class var autosavesInPlace: Bool { false }
     override var isDocumentEdited: Bool { false }
@@ -52,6 +60,12 @@ final class MarkdownDocument: NSDocument {
             documentURL: fileURL,
             onTaskToggle: { [weak self] taskIndex in
                 self?.toggleTask(at: taskIndex)
+            },
+            onSourceChange: { [weak self] proposedSource in
+                self?.writeEditedSource(proposedSource) ?? .failed(CocoaError(.fileNoSuchFile))
+            },
+            onEditConflict: { [weak self] proposedSource, controller in
+                self?.presentEditConflict(proposedSource: proposedSource, controller: controller)
             }
         )
         let window = NSWindow(contentViewController: contentController)
@@ -67,6 +81,65 @@ final class MarkdownDocument: NSDocument {
         let controller = NSWindowController(window: window)
         addWindowController(controller)
         beginExternalChangeObservation()
+    }
+
+    func writeEditedSource(_ proposedSource: String) -> EditWriteResult {
+        guard proposedSource != source else { return .saved }
+        return writeSource(proposedSource, requireUnchanged: true)
+    }
+
+    private func writeSource(_ proposedSource: String, requireUnchanged: Bool) -> EditWriteResult {
+        guard let fileURL else { return .failed(CocoaError(.fileNoSuchFile)) }
+        externalReloadTask?.cancel()
+
+        var result: EditWriteResult = .failed(CocoaError(.fileWriteUnknown))
+        var coordinationError: NSError?
+        let coordinator = NSFileCoordinator(filePresenter: self)
+        coordinator.coordinate(
+            writingItemAt: fileURL,
+            options: .forReplacing,
+            error: &coordinationError
+        ) { coordinatedURL in
+            do {
+                let data = try Data(contentsOf: coordinatedURL)
+                let decoded = try Self.decodedSource(from: data)
+                // Metadata can lag behind an atomic replacement, especially
+                // when the editor changes the file size. Compare the decoded
+                // contents that would actually be overwritten instead of
+                // treating a stale modification date or size as a conflict.
+                if requireUnchanged, decoded.value != source {
+                    result = .conflict
+                    return
+                }
+                guard let encoded = proposedSource.data(
+                    using: decoded.encoding,
+                    allowLossyConversion: false
+                ) else {
+                    throw CocoaError(.fileWriteInapplicableStringEncoding)
+                }
+                try encoded.write(to: coordinatedURL, options: .atomic)
+                source = proposedSource
+                result = .saved
+            } catch {
+                result = .failed(error)
+            }
+        }
+        if let coordinationError {
+            return .failed(coordinationError)
+        }
+        if case .saved = result {
+            recordSuccessfulWrite(proposedSource, at: fileURL)
+        }
+        return result
+    }
+
+    private func recordSuccessfulWrite(_ newSource: String, at url: URL) {
+        let signature = Self.fileSignature(for: url)
+        lastLoadedFileSignature = signature
+        pendingSelfWrite = SelfWriteExpectation(
+            source: newSource,
+            retriesRemaining: 3
+        )
     }
 
     private func toggleTask(at taskIndex: Int) {
@@ -118,7 +191,7 @@ final class MarkdownDocument: NSDocument {
         }
 
         source = updatedSource
-        lastLoadedFileSignature = Self.fileSignature(for: fileURL)
+        recordSuccessfulWrite(updatedSource, at: fileURL)
         for controller in windowControllers {
             (controller.contentViewController as? MarkdownViewController)?.updateSource(source)
         }
@@ -131,6 +204,45 @@ final class MarkdownDocument: NSDocument {
         } else {
             alert.runModal()
         }
+    }
+
+    private func presentEditConflict(proposedSource: String, controller: MarkdownViewController) {
+        guard !isPresentingConflict else { return }
+        isPresentingConflict = true
+        defer { isPresentingConflict = false }
+
+        let alert = NSAlert()
+        alert.messageText = "This Markdown file changed outside Markdown Preview."
+        alert.informativeText = "Choose whether to keep your edit or reload the version saved by another app."
+        alert.addButton(withTitle: "Keep My Changes")
+        alert.addButton(withTitle: "Reload File")
+        let response = alert.runModal()
+
+        switch response {
+        case .alertFirstButtonReturn:
+            switch writeSource(proposedSource, requireUnchanged: false) {
+            case .saved:
+                controller.updateSource(proposedSource)
+            case let .failed(error):
+                presentTaskWriteError(error)
+            case .conflict:
+                break
+            }
+        case .alertSecondButtonReturn:
+            reloadFile(controller: controller)
+        default:
+            break
+        }
+    }
+
+    private func reloadFile(controller: MarkdownViewController) {
+        guard let fileURL,
+              let snapshot = Self.coordinatedSnapshot(for: fileURL)
+        else { return }
+        source = (try? Self.decodedSource(from: snapshot.data).value) ?? source
+        lastLoadedFileSignature = snapshot.signature
+        pendingSelfWrite = nil
+        controller.updateSource(source)
     }
 
     nonisolated override func presentedItemDidChange() {
@@ -196,6 +308,33 @@ final class MarkdownDocument: NSDocument {
     private func applyExternalSnapshot(_ snapshot: FileSnapshot?) {
         guard let snapshot, snapshot.signature != lastLoadedFileSignature else { return }
 
+        // Atomic writes can notify both NSFilePresenter and the vnode watcher
+        // before all metadata has settled. If the content is already the
+        // source we just saved, this is our own write rather than a conflict.
+        if let decoded = try? Self.decodedSource(from: snapshot.data),
+           decoded.value == source
+        {
+            lastLoadedFileSignature = snapshot.signature
+            pendingSelfWrite = nil
+            return
+        }
+
+        if var pendingSelfWrite,
+           pendingSelfWrite.source == source,
+           pendingSelfWrite.retriesRemaining > 0
+        {
+            pendingSelfWrite.retriesRemaining -= 1
+            self.pendingSelfWrite = pendingSelfWrite
+            scheduleExternalReload()
+            return
+        }
+        pendingSelfWrite = nil
+
+        if let controller = windowControllers.first?.contentViewController as? MarkdownViewController {
+            presentEditConflict(proposedSource: source, controller: controller)
+            return
+        }
+
         do {
             try read(from: snapshot.data, ofType: "net.daringfireball.markdown")
         } catch {
@@ -224,6 +363,11 @@ final class MarkdownDocument: NSDocument {
     private struct FileSnapshot: Sendable {
         let data: Data
         let signature: FileSignature
+    }
+
+    private struct SelfWriteExpectation {
+        let source: String
+        var retriesRemaining: Int
     }
 
     private nonisolated static func fileSignature(for url: URL) -> FileSignature? {

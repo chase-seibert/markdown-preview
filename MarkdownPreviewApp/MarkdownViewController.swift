@@ -6,12 +6,23 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
     private var source: String
     private var documentURL: URL?
     private let onTaskToggle: (Int) -> Void
+    private let onSourceChange: (String) -> MarkdownDocument.EditWriteResult
+    private let onEditConflict: (String, MarkdownViewController) -> Void
     private let textView = MarkdownTextView()
+    private var isRendering = false
 
-    init(source: String, documentURL: URL?, onTaskToggle: @escaping (Int) -> Void) {
+    init(
+        source: String,
+        documentURL: URL?,
+        onTaskToggle: @escaping (Int) -> Void,
+        onSourceChange: @escaping (String) -> MarkdownDocument.EditWriteResult,
+        onEditConflict: @escaping (String, MarkdownViewController) -> Void
+    ) {
         self.source = source
         self.documentURL = documentURL
         self.onTaskToggle = onTaskToggle
+        self.onSourceChange = onSourceChange
+        self.onEditConflict = onEditConflict
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -51,14 +62,14 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
     }
 
     private func configureTextView() {
-        textView.isEditable = false
+        textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = true
         textView.importsGraphics = false
         textView.drawsBackground = false
         textView.backgroundColor = .clear
         textView.textColor = .labelColor
-        textView.allowsUndo = false
+        textView.allowsUndo = true
         textView.usesFindPanel = true
         textView.isIncrementalSearchingEnabled = true
         textView.usesAdaptiveColorMappingForDarkAppearance = true
@@ -74,6 +85,33 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
         textView.autoresizingMask = [.width]
         textView.onTaskToggle = onTaskToggle
     }
+
+    func toggleBold(_ sender: Any? = nil) {
+        textView.toggleInlineStyle(.bold)
+    }
+
+    func toggleItalic(_ sender: Any? = nil) {
+        textView.toggleInlineStyle(.italic)
+    }
+
+    func toggleBulletedList(_ sender: Any? = nil) {
+        textView.toggleList(ordered: false)
+    }
+
+    func toggleNumberedList(_ sender: Any? = nil) {
+        textView.toggleList(ordered: true)
+    }
+
+    func undo(_ sender: Any? = nil) {
+        textView.undoManager?.undo()
+    }
+
+    func redo(_ sender: Any? = nil) {
+        textView.undoManager?.redo()
+    }
+
+    var canUndo: Bool { textView.undoManager?.canUndo == true }
+    var canRedo: Bool { textView.undoManager?.canRedo == true }
 
     @objc private func fontScaleDidChange(_ notification: Notification) {
         render()
@@ -108,6 +146,8 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
     }
 
     private func render() {
+        isRendering = true
+        defer { isRendering = false }
         let visibleOrigin = (view as? NSScrollView)?.contentView.bounds.origin ?? .zero
         let selectedRange = textView.selectedRange()
         textView.fontScale = FontScaleController.shared.scale
@@ -129,10 +169,44 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
         }
         textView.window?.invalidateCursorRects(for: textView)
     }
+
+    func textDidChange(_ notification: Notification) {
+        guard !isRendering else { return }
+        textView.normalizeTypedListMarkers()
+        let proposedSource = MarkdownSourceSerializer().serialize(textView.attributedString())
+        switch onSourceChange(proposedSource) {
+        case .saved:
+            source = proposedSource
+        case .conflict:
+            onEditConflict(proposedSource, self)
+        case let .failed(error):
+            let alert = NSAlert(error: error)
+            if let window = view.window {
+                alert.beginSheetModal(for: window)
+            } else {
+                alert.runModal()
+            }
+            render()
+        }
+    }
+
+    func textView(
+        _ textView: NSTextView,
+        shouldChangeTextIn range: NSRange,
+        replacementString text: String?
+    ) -> Bool {
+        (textView as? MarkdownTextView)?.allowsChange(in: range) ?? true
+    }
+
 }
 
 @MainActor
 private final class MarkdownTextView: NSTextView {
+    enum InlineStyle: Int {
+        case italic = 1
+        case bold = 2
+    }
+
     var onTaskToggle: ((Int) -> Void)?
     var fontScale = CGFloat(MarkdownFontScalePreference.defaultScale) {
         didSet { updateReadingInsets() }
@@ -155,6 +229,164 @@ private final class MarkdownTextView: NSTextView {
 
         onTaskToggle?(taskIndex)
     }
+
+    override func keyDown(with event: NSEvent) {
+        guard isEditable else {
+            super.keyDown(with: event)
+            return
+        }
+
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers == .command, event.charactersIgnoringModifiers == "b" {
+            toggleInlineStyle(.bold)
+            return
+        }
+        if modifiers == .command, event.charactersIgnoringModifiers == "i" {
+            toggleInlineStyle(.italic)
+            return
+        }
+        switch event.keyCode {
+        case 36, 76:
+            if insertListNewline() { return }
+        case 51:
+            if deleteListMarkerOrItem() { return }
+        default:
+            break
+        }
+        super.keyDown(with: event)
+    }
+
+    func toggleInlineStyle(_ style: InlineStyle) {
+        let bit = style.rawValue
+        let range = selectedRange()
+        if range.length == 0 {
+            var attributes = typingAttributes
+            let current = attributes[.markdownInlineStyle] as? Int ?? 0
+            attributes[.markdownInlineStyle] = current ^ bit
+            attributes[.markdownProtected] = false
+            typingAttributes = attributes
+            return
+        }
+
+        guard let textStorage else { return }
+        var allHaveStyle = true
+        textStorage.enumerateAttribute(.markdownInlineStyle, in: range) { value, _, _ in
+            if ((value as? Int) ?? 0) & bit == 0 { allHaveStyle = false }
+        }
+        textStorage.beginEditing()
+        textStorage.enumerateAttribute(.markdownInlineStyle, in: range) { value, subrange, _ in
+            let current = (value as? Int) ?? 0
+            let updated = allHaveStyle ? current & ~bit : current | bit
+            textStorage.addAttribute(.markdownInlineStyle, value: updated, range: subrange)
+            if let font = textStorage.attribute(.font, at: subrange.location, effectiveRange: nil) as? NSFont {
+                let converted = updated & 2 != 0
+                    ? NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+                    : NSFontManager.shared.convert(font, toNotHaveTrait: .boldFontMask)
+                let finalFont = updated & 1 != 0
+                    ? NSFontManager.shared.convert(converted, toHaveTrait: .italicFontMask)
+                    : NSFontManager.shared.convert(converted, toNotHaveTrait: .italicFontMask)
+                textStorage.addAttribute(.font, value: finalFont, range: subrange)
+            }
+        }
+        textStorage.endEditing()
+        didChangeText()
+    }
+
+    func toggleList(ordered: Bool) {
+        guard let textStorage else { return }
+        let ranges = selectedParagraphRanges()
+        guard !ranges.isEmpty else { return }
+        let shouldRemove = ranges.allSatisfy { range in
+            guard let marker = listMarker(at: range.location) else { return false }
+            return marker.ordered == ordered
+        }
+
+        textStorage.beginEditing()
+        for range in ranges.reversed() {
+            if let marker = listMarker(at: range.location) {
+                if shouldRemove {
+                    removeListMarker(marker, in: range, textStorage: textStorage)
+                } else if marker.ordered != ordered {
+                    removeListMarker(marker, in: range, textStorage: textStorage)
+                    addListMarker(ordered: ordered, in: range, textStorage: textStorage)
+                }
+            } else if blockKind(in: range) == "paragraph" {
+                addListMarker(ordered: ordered, in: range, textStorage: textStorage)
+            }
+        }
+        textStorage.endEditing()
+        didChangeText()
+    }
+
+    private func insertListNewline() -> Bool {
+        guard let context = listMarker(at: selectedRange().location) else { return false }
+        let contentEnd = contentEnd(of: context.lineRange)
+        let content = (string as NSString).substring(with: NSRange(
+            location: context.contentStart,
+            length: max(0, contentEnd - context.contentStart)
+        ))
+        allowProtectedMutation = true
+        defer { allowProtectedMutation = false }
+
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            super.insertText("\n", replacementRange: context.lineRange)
+            return true
+        }
+
+        let attributes = textStorage?.attributes(at: context.contentStart, effectiveRange: nil) ?? [:]
+        let prefix: NSAttributedString
+        let prefixLength: Int
+        if context.task {
+            prefix = taskMarkerReplacement(checked: false, basedOn: attributes)
+            prefixLength = prefix.length
+        } else {
+            let marker = context.ordered ? "\(context.ordinal + 1).  " : "•  "
+            prefix = NSAttributedString(string: marker, attributes: attributes)
+            prefixLength = (marker as NSString).length
+        }
+        let prefixAttributes = listAttributes(
+            basedOn: attributes,
+            ordered: context.ordered,
+            depth: context.depth,
+            ordinal: context.ordinal + 1,
+            prefixLength: prefixLength,
+            quoteDepth: context.quoteDepth,
+            task: context.task,
+            checked: false
+        )
+        let value = NSMutableAttributedString(string: "\n", attributes: attributes)
+        value.append(prefix)
+        value.addAttributes(prefixAttributes, range: NSRange(location: 1, length: prefixLength))
+        value.addAttribute(.markdownProtected, value: true, range: NSRange(location: 1, length: prefixLength))
+        value.addAttribute(.markdownInlineStyle, value: 0, range: NSRange(location: 1, length: prefixLength))
+        super.insertText(value, replacementRange: selectedRange())
+        return true
+    }
+
+    private func deleteListMarkerOrItem() -> Bool {
+        let range = selectedRange()
+        guard range.length == 0, let context = listMarker(at: range.location), range.location == context.contentStart else {
+            return false
+        }
+        guard let textStorage else { return false }
+        allowProtectedMutation = true
+        defer { allowProtectedMutation = false }
+
+        let contentEnd = contentEnd(of: context.lineRange)
+        let content = (string as NSString).substring(with: NSRange(
+            location: context.contentStart,
+            length: max(0, contentEnd - context.contentStart)
+        ))
+        if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            super.insertText("", replacementRange: context.lineRange)
+        } else {
+            removeListMarker(context, in: context.lineRange, textStorage: textStorage)
+            didChangeText()
+        }
+        return true
+    }
+
+    private var allowProtectedMutation = false
 
     override func resetCursorRects() {
         super.resetCursorRects()
@@ -201,6 +433,395 @@ private final class MarkdownTextView: NSTextView {
             at: characterIndex,
             effectiveRange: nil
         ) as? Int
+    }
+
+    private struct ListMarker {
+        let lineRange: NSRange
+        let markerStart: Int
+        let contentStart: Int
+        let prefixLength: Int
+        let task: Bool
+        let ordered: Bool
+        let depth: Int
+        let ordinal: Int
+        let quoteDepth: Int
+    }
+
+    private func listMarker(at location: Int) -> ListMarker? {
+        guard let textStorage, textStorage.length > 0 else { return nil }
+        let safeLocation = min(max(location, 0), textStorage.length - 1)
+        let lineRange = (string as NSString).paragraphRange(for: NSRange(location: safeLocation, length: 0))
+        var markerStart = lineRange.location
+        while markerStart < NSMaxRange(lineRange) {
+            if textStorage.attribute(.markdownBlockKind, at: markerStart, effectiveRange: nil) as? String == "list" {
+                break
+            }
+            markerStart += 1
+        }
+        guard markerStart < NSMaxRange(lineRange),
+              textStorage.attribute(.markdownBlockKind, at: markerStart, effectiveRange: nil) as? String == "list"
+        else { return nil }
+        let prefix = textStorage.attribute(.markdownListPrefixLength, at: markerStart, effectiveRange: nil) as? Int ?? 0
+        return ListMarker(
+            lineRange: lineRange,
+            markerStart: markerStart,
+            contentStart: min(NSMaxRange(lineRange), markerStart + prefix),
+            prefixLength: prefix,
+            task: textStorage.attribute(.markdownListTask, at: markerStart, effectiveRange: nil) as? Bool ?? false,
+            ordered: (textStorage.attribute(.markdownListKind, at: markerStart, effectiveRange: nil) as? String) == "ordered",
+            depth: textStorage.attribute(.markdownListDepth, at: markerStart, effectiveRange: nil) as? Int ?? 0,
+            ordinal: textStorage.attribute(.markdownListOrdinal, at: markerStart, effectiveRange: nil) as? Int ?? 1,
+            quoteDepth: textStorage.attribute(.markdownQuoteDepth, at: markerStart, effectiveRange: nil) as? Int ?? 0
+        )
+    }
+
+    func normalizeTypedListMarkers() {
+        guard let textStorage, textStorage.length > 0 else { return }
+
+        var location = 0
+        while location < textStorage.length {
+            let lineRange = (string as NSString).paragraphRange(for: NSRange(location: location, length: 0))
+            let listMarker = self.listMarker(at: location)
+            let start = listMarker?.contentStart ?? editableLineStart(lineRange)
+            let contentEnd = contentEnd(of: lineRange)
+
+            if let listMarker, !listMarker.task {
+                if let taskToken = typedTaskToken(at: start, before: contentEnd) {
+                    convertToTask(
+                        token: taskToken,
+                        at: start,
+                        existingList: listMarker
+                    )
+                    let updatedLineRange = (string as NSString).paragraphRange(
+                        for: NSRange(location: listMarker.markerStart, length: 0)
+                    )
+                    location = max(location + 1, NSMaxRange(updatedLineRange))
+                    continue
+                }
+            } else if listMarker == nil,
+                      blockKind(at: start) == "paragraph"
+            {
+                if let taskToken = typedTaskToken(at: start, before: contentEnd) {
+                    convertToTask(token: taskToken, at: start, existingList: nil)
+                    let updatedLineRange = (string as NSString).paragraphRange(
+                        for: NSRange(location: lineRange.location, length: 0)
+                    )
+                    location = max(location + 1, NSMaxRange(updatedLineRange))
+                    continue
+                }
+
+                if let listToken = typedListToken(at: start, before: contentEnd) {
+                    convertToList(token: listToken, at: start, lineRange: lineRange)
+                    let updatedLineRange = (string as NSString).paragraphRange(
+                        for: NSRange(location: lineRange.location, length: 0)
+                    )
+                    location = max(location + 1, NSMaxRange(updatedLineRange))
+                    continue
+                }
+            }
+
+            location = max(location + 1, NSMaxRange(lineRange))
+        }
+
+        renumberTaskMarkers()
+    }
+
+    private struct TypedToken {
+        let length: Int
+        let ordered: Bool
+        let ordinal: Int
+        let checked: Bool
+    }
+
+    private func editableLineStart(_ lineRange: NSRange) -> Int {
+        let end = contentEnd(of: lineRange)
+        var start = lineRange.location
+        while start + 2 <= end,
+              (string as NSString).substring(with: NSRange(location: start, length: 2)) == "▍ "
+        {
+            start += 2
+        }
+        return start
+    }
+
+    private func blockKind(at location: Int) -> String? {
+        guard let textStorage, textStorage.length > 0 else { return nil }
+        return textStorage.attribute(
+            .markdownBlockKind,
+            at: min(location, textStorage.length - 1),
+            effectiveRange: nil
+        ) as? String
+    }
+
+    private func typedTaskToken(at location: Int, before end: Int) -> TypedToken? {
+        guard let textStorage, location < end else { return nil }
+        let remaining = (textStorage.string as NSString).substring(
+            with: NSRange(location: location, length: end - location)
+        )
+        if remaining.hasPrefix("[ ]") {
+            return TypedToken(length: remaining.hasPrefix("[ ] ") ? 4 : 3, ordered: false, ordinal: 1, checked: false)
+        }
+        if remaining.hasPrefix("[]") {
+            return TypedToken(length: remaining.hasPrefix("[] ") ? 3 : 2, ordered: false, ordinal: 1, checked: false)
+        }
+        if remaining.hasPrefix("[x]") || remaining.hasPrefix("[X]") {
+            return TypedToken(
+                length: remaining.hasPrefix("[x] ") || remaining.hasPrefix("[X] ") ? 4 : 3,
+                ordered: false,
+                ordinal: 1,
+                checked: true
+            )
+        }
+        return nil
+    }
+
+    private func typedListToken(at location: Int, before end: Int) -> TypedToken? {
+        guard let textStorage, location < end else { return nil }
+        let remaining = (textStorage.string as NSString).substring(
+            with: NSRange(location: location, length: end - location)
+        )
+        if remaining.hasPrefix("*") || remaining.hasPrefix("-") {
+            let hasSpace = remaining.count > 1 && remaining[remaining.index(after: remaining.startIndex)].isWhitespace
+            return TypedToken(length: hasSpace ? 2 : 1, ordered: false, ordinal: 1, checked: false)
+        }
+        let digits = remaining.prefix(while: { $0.isNumber })
+        guard !digits.isEmpty,
+              remaining.dropFirst(digits.count).first == ".",
+              let ordinal = Int(digits)
+        else { return nil }
+        let markerLength = digits.count + 1
+        let hasSpace = remaining.count > markerLength && remaining[remaining.index(remaining.startIndex, offsetBy: markerLength)].isWhitespace
+        return TypedToken(length: hasSpace ? markerLength + 1 : markerLength, ordered: true, ordinal: ordinal, checked: false)
+    }
+
+    private func convertToTask(token: TypedToken, at location: Int, existingList: ListMarker?) {
+        guard let textStorage else { return }
+        let attributes = textStorage.attributes(at: location, effectiveRange: nil)
+        let typedRange = NSRange(location: location, length: token.length)
+        let replacement = taskMarkerReplacement(checked: token.checked, basedOn: attributes)
+        textStorage.replaceCharacters(in: typedRange, with: replacement)
+
+        let lineLocation = existingList?.markerStart ?? location
+        let updatedLineRange = (string as NSString).paragraphRange(
+            for: NSRange(location: lineLocation, length: 0)
+        )
+        let oldPrefixLength = existingList?.prefixLength ?? 0
+        // The typed token was part of the item text, not the existing list
+        // prefix. The replacement becomes a new prefix in addition to it.
+        let prefixLength = oldPrefixLength + replacement.length
+        var listAttributes: [NSAttributedString.Key: Any] = [
+            .markdownBlockKind: "list",
+            .markdownListKind: existingList?.ordered == true ? "ordered" : "unordered",
+            .markdownListDepth: existingList?.depth ?? 0,
+            .markdownListOrdinal: existingList?.ordinal ?? 1,
+            .markdownListPrefixLength: prefixLength,
+            .markdownListTask: true,
+            .markdownListChecked: token.checked,
+        ]
+        if let quoteDepth = existingList?.quoteDepth {
+            listAttributes[.markdownQuoteDepth] = quoteDepth
+        }
+        textStorage.addAttributes(listAttributes, range: updatedLineRange)
+    }
+
+    private func convertToList(token: TypedToken, at location: Int, lineRange: NSRange) {
+        guard let textStorage else { return }
+        let marker = token.ordered ? "\(token.ordinal).  " : "•  "
+        let attributes = textStorage.attributes(at: location, effectiveRange: nil)
+        let replacement = NSAttributedString(string: marker, attributes: attributes.merging([
+            .markdownBlockKind: "list",
+            .markdownListKind: token.ordered ? "ordered" : "unordered",
+            .markdownListDepth: 0,
+            .markdownListOrdinal: token.ordinal,
+            .markdownListPrefixLength: (marker as NSString).length,
+            .markdownListTask: false,
+            .markdownListChecked: false,
+            .markdownProtected: true,
+        ]) { _, new in new })
+        textStorage.replaceCharacters(in: NSRange(location: location, length: token.length), with: replacement)
+        let updatedLineRange = (string as NSString).paragraphRange(
+            for: NSRange(location: lineRange.location, length: 0)
+        )
+        textStorage.addAttributes([
+            .markdownBlockKind: "list",
+            .markdownListKind: token.ordered ? "ordered" : "unordered",
+            .markdownListDepth: 0,
+            .markdownListOrdinal: token.ordinal,
+            .markdownListPrefixLength: (marker as NSString).length,
+            .markdownListTask: false,
+            .markdownListChecked: false,
+        ], range: updatedLineRange)
+    }
+
+    private func taskMarkerReplacement(
+        checked: Bool,
+        basedOn attributes: [NSAttributedString.Key: Any]
+    ) -> NSAttributedString {
+        let font = attributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 17)
+        let dimension = font.pointSize * 0.78
+        let image = NSImage(
+            systemSymbolName: checked ? "checkmark.square" : "square",
+            accessibilityDescription: checked ? "Checked" : "Unchecked"
+        )
+        image?.isTemplate = true
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = NSRect(
+            x: 0,
+            y: (font.pointSize - dimension) / 2,
+            width: dimension,
+            height: dimension
+        )
+
+        let replacement = NSMutableAttributedString(
+            attributedString: NSAttributedString(attachment: attachment)
+        )
+        replacement.append(NSAttributedString(string: "\t", attributes: attributes))
+        replacement.addAttributes([
+            .font: font,
+            .foregroundColor: attributes[.foregroundColor] as? NSColor ?? .secondaryLabelColor,
+            .markdownProtected: true,
+            .markdownInlineStyle: 0,
+        ], range: NSRange(location: 0, length: replacement.length))
+        replacement.addAttribute(
+            .markdownTaskChecked,
+            value: checked,
+            range: NSRange(location: 0, length: 1)
+        )
+        replacement.addAttribute(.markdownTaskIndex, value: 0, range: NSRange(location: 0, length: 1))
+        return replacement
+    }
+
+    private func renumberTaskMarkers() {
+        guard let textStorage else { return }
+        var nextIndex = 0
+        textStorage.enumerateAttribute(
+            .markdownTaskChecked,
+            in: NSRange(location: 0, length: textStorage.length)
+        ) { value, range, _ in
+            guard value != nil else { return }
+            textStorage.addAttribute(.markdownTaskIndex, value: nextIndex, range: range)
+            nextIndex += 1
+        }
+    }
+
+    private func blockKind(in range: NSRange) -> String? {
+        guard let textStorage, textStorage.length > 0 else { return nil }
+        let index = min(range.location, textStorage.length - 1)
+        return textStorage.attribute(.markdownBlockKind, at: index, effectiveRange: nil) as? String
+    }
+
+    private func contentEnd(of range: NSRange) -> Int {
+        guard let textStorage else { return range.location }
+        let end = NSMaxRange(range)
+        if end > range.location,
+           (textStorage.string as NSString).character(at: end - 1) == 10
+        { return end - 1 }
+        return end
+    }
+
+    private func selectedParagraphRanges() -> [NSRange] {
+        guard let textStorage, textStorage.length > 0 else { return [] }
+        let selected = selectedRange()
+        let start = min(selected.location, textStorage.length - 1)
+        let end = min(max(selected.location + max(selected.length, 1) - 1, start), textStorage.length - 1)
+        var ranges: [NSRange] = []
+        var cursor = start
+        while cursor <= end {
+            let range = (string as NSString).paragraphRange(for: NSRange(location: cursor, length: 0))
+            ranges.append(range)
+            let next = NSMaxRange(range)
+            if next <= cursor { break }
+            cursor = next
+        }
+        return ranges
+    }
+
+    private func addListMarker(ordered: Bool, in range: NSRange, textStorage: NSTextStorage) {
+        let start = range.location
+        let existing = textStorage.attributes(at: min(start, textStorage.length - 1), effectiveRange: nil)
+        let marker = ordered ? "1.  " : "•  "
+        let value = NSAttributedString(string: marker, attributes: existing.merging([
+            .markdownBlockKind: "list",
+            .markdownListKind: ordered ? "ordered" : "unordered",
+            .markdownListDepth: 0,
+            .markdownListOrdinal: 1,
+            .markdownListPrefixLength: (marker as NSString).length,
+            .markdownListTask: false,
+            .markdownListChecked: false,
+            .markdownProtected: true,
+            .markdownInlineStyle: 0,
+        ]) { _, new in new })
+        textStorage.insert(value, at: start)
+        textStorage.addAttributes([
+            .markdownBlockKind: "list",
+            .markdownListKind: ordered ? "ordered" : "unordered",
+            .markdownListDepth: 0,
+            .markdownListOrdinal: 1,
+            .markdownListPrefixLength: (marker as NSString).length,
+            .markdownListTask: false,
+            .markdownListChecked: false,
+            .markdownProtected: true,
+        ], range: NSRange(location: start, length: value.length))
+    }
+
+    private func removeListMarker(_ marker: ListMarker, in range: NSRange, textStorage: NSTextStorage) {
+        textStorage.deleteCharacters(in: NSRange(location: marker.markerStart, length: marker.contentStart - marker.markerStart))
+        let end = min(textStorage.length, contentEnd(of: range) - (marker.contentStart - marker.markerStart))
+        guard end > marker.markerStart else { return }
+        textStorage.addAttribute(.markdownBlockKind, value: "paragraph", range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.addAttribute(.markdownProtected, value: false, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListKind, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListDepth, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListOrdinal, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListPrefixLength, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListTask, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownListChecked, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownTaskChecked, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+        textStorage.removeAttribute(.markdownTaskIndex, range: NSRange(location: marker.markerStart, length: end - marker.markerStart))
+    }
+
+    private func listAttributes(
+        basedOn attributes: [NSAttributedString.Key: Any],
+        ordered: Bool,
+        depth: Int,
+        ordinal: Int,
+        prefixLength: Int,
+        quoteDepth: Int,
+        task: Bool = false,
+        checked: Bool = false
+    ) -> [NSAttributedString.Key: Any] {
+        attributes.merging([
+            .markdownBlockKind: "list",
+            .markdownListKind: ordered ? "ordered" : "unordered",
+            .markdownListDepth: depth,
+            .markdownListOrdinal: ordinal,
+            .markdownListPrefixLength: prefixLength,
+            .markdownListTask: task,
+            .markdownListChecked: checked,
+            .markdownQuoteDepth: quoteDepth,
+            .markdownProtected: true,
+        ]) { _, new in new }
+    }
+
+    func allowsChange(in range: NSRange) -> Bool {
+        guard !allowProtectedMutation, let textStorage else { return true }
+        if range.length > 0 {
+            var blocked = false
+            textStorage.enumerateAttribute(.markdownProtected, in: range) { value, _, stop in
+                if value as? Bool == true {
+                    blocked = true
+                    stop.pointee = true
+                }
+            }
+            if blocked { return false }
+        }
+        if range.location < textStorage.length,
+           textStorage.attribute(.markdownProtected, at: range.location, effectiveRange: nil) as? Bool == true
+        {
+            return false
+        }
+        return true
     }
 
     private func updateReadingInsets() {

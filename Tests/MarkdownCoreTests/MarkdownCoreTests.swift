@@ -197,6 +197,13 @@ final class MarkdownCoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRenderedEditingSurfaceSerializesBackToMarkdown() {
+        let source = "# Heading\n\nA **bold** paragraph.\n\n- First\n- [x] Done\n\n```swift\nlet value = 42\n```\n\n| Name | Value |\n| --- | --- |\n| One | Two |"
+        let rendered = MarkdownAttributedRenderer().render(source)
+        XCTAssertEqual(MarkdownSourceSerializer().serialize(rendered), source)
+    }
+
+    @MainActor
     func testFirstFontScaleChangeCoversEveryCharacter() {
         let source = "# Heading\n\nBody with `code`.\n\n- List item\n\n> Quote"
         let small = MarkdownAttributedRenderer().render(source, options: .init(fontScale: 0.8))

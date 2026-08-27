@@ -4,6 +4,19 @@ import Foundation
 public extension NSAttributedString.Key {
     static let markdownTaskIndex = NSAttributedString.Key("MarkdownPreviewTaskIndex")
     static let markdownTaskChecked = NSAttributedString.Key("MarkdownPreviewTaskChecked")
+    static let markdownBlockKind = NSAttributedString.Key("MarkdownPreviewBlockKind")
+    static let markdownListKind = NSAttributedString.Key("MarkdownPreviewListKind")
+    static let markdownListDepth = NSAttributedString.Key("MarkdownPreviewListDepth")
+    static let markdownListOrdinal = NSAttributedString.Key("MarkdownPreviewListOrdinal")
+    static let markdownListPrefixLength = NSAttributedString.Key("MarkdownPreviewListPrefixLength")
+    static let markdownListTask = NSAttributedString.Key("MarkdownPreviewListTask")
+    static let markdownListChecked = NSAttributedString.Key("MarkdownPreviewListChecked")
+    static let markdownHeadingLevel = NSAttributedString.Key("MarkdownPreviewHeadingLevel")
+    static let markdownCodeLanguage = NSAttributedString.Key("MarkdownPreviewCodeLanguage")
+    static let markdownQuoteDepth = NSAttributedString.Key("MarkdownPreviewQuoteDepth")
+    static let markdownTableHeader = NSAttributedString.Key("MarkdownPreviewTableHeader")
+    static let markdownInlineStyle = NSAttributedString.Key("MarkdownPreviewInlineStyle")
+    static let markdownProtected = NSAttributedString.Key("MarkdownPreviewProtected")
 }
 
 public struct MarkdownRenderOptions: Sendable {
@@ -47,7 +60,8 @@ public struct MarkdownAttributedRenderer: Sendable {
                 to: output,
                 bodySize: bodySize,
                 colors: colors,
-                nextTaskIndex: &nextTaskIndex
+                nextTaskIndex: &nextTaskIndex,
+                quoteDepth: 0
             )
         }
 
@@ -79,7 +93,8 @@ public struct MarkdownAttributedRenderer: Sendable {
         to output: NSMutableAttributedString,
         bodySize: CGFloat,
         colors: Colors,
-        nextTaskIndex: inout Int
+        nextTaskIndex: inout Int,
+        quoteDepth: Int
     ) {
         switch block {
         case let .heading(level, text):
@@ -87,13 +102,17 @@ public struct MarkdownAttributedRenderer: Sendable {
             let size = bodySize * multipliers[level - 1]
             let font = NSFont.systemFont(ofSize: size, weight: level <= 2 ? .bold : .semibold)
             let value = inline(text, font: font, colors: colors)
+            addBlockAttributes(to: value, kind: "heading", quoteDepth: quoteDepth)
+            value.addAttribute(.markdownProtected, value: false, range: NSRange(location: 0, length: value.length))
             applyParagraphStyle(to: value, before: level == 1 ? bodySize * 0.35 : bodySize * 0.2, after: bodySize * 0.35)
+            value.addAttribute(.markdownHeadingLevel, value: level, range: NSRange(location: 0, length: value.length))
             output.append(value)
             appendNewline(to: output, font: font)
 
         case let .paragraph(text):
             let font = NSFont.systemFont(ofSize: bodySize)
             let value = inline(text, font: font, colors: colors)
+            addBlockAttributes(to: value, kind: "paragraph", quoteDepth: quoteDepth)
             applyParagraphStyle(to: value, after: bodySize * 0.75, lineHeight: 1.32)
             output.append(value)
             appendNewline(to: output, font: font)
@@ -105,7 +124,8 @@ public struct MarkdownAttributedRenderer: Sendable {
                 to: output,
                 bodySize: bodySize,
                 colors: colors,
-                nextTaskIndex: &nextTaskIndex
+                nextTaskIndex: &nextTaskIndex,
+                quoteDepth: quoteDepth
             )
 
         case let .orderedList(items):
@@ -115,7 +135,8 @@ public struct MarkdownAttributedRenderer: Sendable {
                 to: output,
                 bodySize: bodySize,
                 colors: colors,
-                nextTaskIndex: &nextTaskIndex
+                nextTaskIndex: &nextTaskIndex,
+                quoteDepth: quoteDepth
             )
 
         case let .blockquote(blocks):
@@ -123,14 +144,20 @@ public struct MarkdownAttributedRenderer: Sendable {
             for quotedBlock in blocks {
                 output.append(NSAttributedString(
                     string: "▍ ",
-                    attributes: [.font: NSFont.systemFont(ofSize: bodySize), .foregroundColor: colors.secondary]
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: bodySize),
+                        .foregroundColor: colors.secondary,
+                        .markdownQuoteDepth: quoteDepth + 1,
+                        .markdownProtected: true,
+                    ]
                 ))
                 append(
                     quotedBlock,
                     to: output,
                     bodySize: bodySize,
                     colors: colors,
-                    nextTaskIndex: &nextTaskIndex
+                    nextTaskIndex: &nextTaskIndex,
+                    quoteDepth: quoteDepth + 1
                 )
             }
             if output.length > start {
@@ -149,6 +176,15 @@ public struct MarkdownAttributedRenderer: Sendable {
                     .backgroundColor: colors.codeBackground,
                 ]
             )
+            addBlockAttributes(to: value, kind: "code", quoteDepth: quoteDepth)
+            value.addAttribute(.markdownCodeLanguage, value: language ?? "", range: NSRange(location: 0, length: value.length))
+            if !label.isEmpty {
+                value.addAttribute(
+                    .markdownProtected,
+                    value: true,
+                    range: NSRange(location: 0, length: (label as NSString).length)
+                )
+            }
             let style = NSMutableParagraphStyle()
             style.paragraphSpacingBefore = bodySize * 0.25
             style.paragraphSpacing = bodySize * 0.8
@@ -166,13 +202,29 @@ public struct MarkdownAttributedRenderer: Sendable {
                 string: "━━━━━━━━━━━━━━━━━━━━━━━━",
                 attributes: [.font: font, .foregroundColor: colors.separator]
             )
+            addBlockAttributes(to: value, kind: "thematicBreak", quoteDepth: quoteDepth)
+            value.addAttribute(.markdownProtected, value: true, range: NSRange(location: 0, length: value.length))
             applyParagraphStyle(to: value, before: bodySize * 0.4, after: bodySize * 0.7)
             output.append(value)
             appendNewline(to: output, font: font)
 
         case let .table(headers, rows):
-            appendTable(headers: headers, rows: rows, to: output, bodySize: bodySize, colors: colors)
+            appendTable(
+                headers: headers,
+                rows: rows,
+                to: output,
+                bodySize: bodySize,
+                colors: colors,
+                quoteDepth: quoteDepth
+            )
         }
+    }
+
+    @MainActor
+    private func addBlockAttributes(to value: NSMutableAttributedString, kind: String, quoteDepth: Int) {
+        guard value.length > 0 else { return }
+        value.addAttribute(.markdownBlockKind, value: kind, range: NSRange(location: 0, length: value.length))
+        value.addAttribute(.markdownQuoteDepth, value: quoteDepth, range: NSRange(location: 0, length: value.length))
     }
 
     @MainActor
@@ -182,7 +234,8 @@ public struct MarkdownAttributedRenderer: Sendable {
         to output: NSMutableAttributedString,
         bodySize: CGFloat,
         colors: Colors,
-        nextTaskIndex: inout Int
+        nextTaskIndex: inout Int,
+        quoteDepth: Int
     ) {
         let font = NSFont.systemFont(ofSize: bodySize)
         for (index, item) in items.enumerated() {
@@ -198,7 +251,11 @@ public struct MarkdownAttributedRenderer: Sendable {
             let prefix = indentation + marker + (item.checkbox == nil ? "  " : "\t")
             let value = NSMutableAttributedString(
                 string: prefix,
-                attributes: [.font: font, .foregroundColor: colors.secondary]
+                attributes: [
+                    .font: font,
+                    .foregroundColor: colors.secondary,
+                    .markdownProtected: true,
+                ]
             )
             if item.checkbox != nil {
                 let markerLocation = (indentation as NSString).length
@@ -234,6 +291,15 @@ public struct MarkdownAttributedRenderer: Sendable {
                 nextTaskIndex += 1
             }
             value.append(inline(item.text, font: font, colors: colors))
+            addBlockAttributes(to: value, kind: "list", quoteDepth: quoteDepth)
+            value.addAttributes([
+                .markdownListKind: ordered ? "ordered" : "unordered",
+                .markdownListDepth: item.depth,
+                .markdownListOrdinal: item.ordinal ?? index + 1,
+                .markdownListPrefixLength: (prefix as NSString).length,
+                .markdownListTask: item.checkbox != nil,
+                .markdownListChecked: item.checkbox == true,
+            ], range: NSRange(location: 0, length: value.length))
             let style = NSMutableParagraphStyle()
             let indent = bodySize * CGFloat(1.7 + Double(item.depth) * 1.25)
             style.firstLineHeadIndent = bodySize * CGFloat(Double(item.depth) * 1.25)
@@ -272,7 +338,8 @@ public struct MarkdownAttributedRenderer: Sendable {
         rows: [[String]],
         to output: NSMutableAttributedString,
         bodySize: CGFloat,
-        colors: Colors
+        colors: Colors,
+        quoteDepth: Int
     ) {
         let font = NSFont.systemFont(ofSize: bodySize * 0.95)
         let bold = NSFont.systemFont(ofSize: bodySize * 0.95, weight: .semibold)
@@ -291,6 +358,9 @@ public struct MarkdownAttributedRenderer: Sendable {
             style.paragraphSpacing = rowIndex == rows.count ? bodySize * 0.75 : bodySize * 0.25
             style.lineHeightMultiple = 1.25
             value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
+            addBlockAttributes(to: value, kind: "table", quoteDepth: quoteDepth)
+            value.addAttribute(.markdownTableHeader, value: rowIndex == 0, range: NSRange(location: 0, length: value.length))
+            value.addAttribute(.markdownProtected, value: false, range: NSRange(location: 0, length: value.length))
             if rowIndex == 0 {
                 value.addAttribute(.backgroundColor, value: colors.tableHeader, range: NSRange(location: 0, length: value.length))
             }
@@ -315,8 +385,14 @@ public struct MarkdownAttributedRenderer: Sendable {
         let value = NSMutableAttributedString(attributedString: parsed)
         let fullRange = NSRange(location: 0, length: value.length)
         value.addAttributes([.font: font, .foregroundColor: colors.text], range: fullRange)
+        value.addAttribute(.markdownInlineStyle, value: 0, range: fullRange)
         value.enumerateAttribute(.inlinePresentationIntent, in: fullRange) { attribute, range, _ in
             guard let rawValue = attribute as? Int else { return }
+            var style = 0
+            if rawValue & 1 != 0 { style |= 1 }
+            if rawValue & 2 != 0 { style |= 2 }
+            if rawValue & 8 != 0 { style |= 4 }
+            value.addAttribute(.markdownInlineStyle, value: style, range: range)
             var styledFont = font
             if rawValue & 2 != 0 {
                 styledFont = NSFontManager.shared.convert(styledFont, toHaveTrait: .boldFontMask)
@@ -394,6 +470,256 @@ public struct MarkdownAttributedRenderer: Sendable {
         style.paragraphSpacing = after
         style.lineHeightMultiple = lineHeight
         value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
+    }
+}
+
+/// Converts the small, rendered editing surface back into Markdown.
+///
+/// The renderer places structural attributes on each visible block so this
+/// serializer can keep headings, quotes, code blocks, tables, and list rows
+/// intact while the user edits their visible text.
+public struct MarkdownSourceSerializer: Sendable {
+    public init() {}
+
+    @MainActor
+    public func serialize(_ rendered: NSAttributedString) -> String {
+        guard rendered.length > 0 else { return "" }
+
+        let string = rendered.string as NSString
+        var paragraphs: [NSRange] = []
+        var location = 0
+        while location < rendered.length {
+            let range = string.paragraphRange(for: NSRange(location: location, length: 0))
+            paragraphs.append(range)
+            location = NSMaxRange(range)
+        }
+
+        var entries: [(kind: String, quoteDepth: Int, text: String)] = []
+        var index = 0
+        while index < paragraphs.count {
+            let paragraph = paragraphs[index]
+            let start = firstVisibleIndex(in: rendered, paragraph: paragraph)
+            let metadataStart = blockMetadataStart(in: rendered, paragraph: paragraph)
+            let kind = rendered.attribute(.markdownBlockKind, at: metadataStart, effectiveRange: nil) as? String
+
+            if kind == "code" {
+                let language = rendered.attribute(.markdownCodeLanguage, at: metadataStart, effectiveRange: nil) as? String ?? ""
+                let quoteDepth = quoteDepth(in: rendered, at: start)
+                var end = NSMaxRange(paragraph)
+                var next = index + 1
+                while next < paragraphs.count {
+                    let nextStart = blockMetadataStart(in: rendered, paragraph: paragraphs[next])
+                    guard rendered.attribute(.markdownBlockKind, at: nextStart, effectiveRange: nil) as? String == "code"
+                    else { break }
+                    end = NSMaxRange(paragraphs[next])
+                    next += 1
+                }
+                if end > paragraph.location,
+                   rendered.attribute(.markdownBlockKind, at: end - 1, effectiveRange: nil) == nil
+                {
+                    end -= 1
+                }
+                var code = string.substring(with: NSRange(location: paragraph.location, length: max(0, end - paragraph.location)))
+                if let newline = code.firstIndex(of: "\n") {
+                    code = String(code[code.index(after: newline)...])
+                } else {
+                    code = ""
+                }
+                let fence = language.isEmpty ? "```" : "```\(language)"
+                let quoted = quoteLines("\(fence)\n\(code)\n```", depth: quoteDepth)
+                entries.append(("code", quoteDepth, quoted))
+                index = next
+                continue
+            }
+
+            if kind == "table" {
+                let quoteDepth = quoteDepth(in: rendered, at: start)
+                var rows: [String] = []
+                var next = index
+                while next < paragraphs.count {
+                    let nextStart = blockMetadataStart(in: rendered, paragraph: paragraphs[next])
+                    guard rendered.attribute(.markdownBlockKind, at: nextStart, effectiveRange: nil) as? String == "table"
+                    else { break }
+                    rows.append(serializeParagraph(rendered, range: paragraphs[next]))
+                    next += 1
+                }
+                if let header = rows.first {
+                    let columnCount = max(1, header.split(separator: "|", omittingEmptySubsequences: true).count)
+                    let divider = quoteLines(
+                        "| " + Array(repeating: "---", count: columnCount).joined(separator: " | ") + " |",
+                        depth: quoteDepth
+                    )
+                    rows.insert(divider, at: 1)
+                }
+                entries.append(("table", quoteDepth, rows.joined(separator: "\n")))
+                index = next
+                continue
+            }
+
+            let line = serializeParagraph(rendered, range: paragraph)
+            let lineKind = kind ?? "paragraph"
+            entries.append((lineKind, quoteDepth(in: rendered, at: start), line))
+            index += 1
+        }
+
+        var output: [String] = []
+        var previousKind: String?
+        for entry in entries {
+            if let previous = output.last,
+               !previous.isEmpty,
+               !canShareListSpacing(with: entry.kind, previousKind: previousKind)
+            {
+                output.append("")
+            }
+            output.append(entry.text)
+            previousKind = entry.kind
+        }
+        return output.joined(separator: "\n").trimmingCharacters(in: .newlines)
+    }
+
+    @MainActor
+    private func serializeParagraph(_ rendered: NSAttributedString, range: NSRange) -> String {
+        let string = rendered.string as NSString
+        var end = NSMaxRange(range)
+        if end > range.location, string.character(at: end - 1) == 10 { end -= 1 }
+        guard end > range.location else { return "" }
+
+        let quoteDepth = quoteDepth(in: rendered, at: range.location)
+        var contentStart = range.location
+        var prefixLength = 0
+        let visible = string.substring(with: NSRange(location: range.location, length: end - range.location))
+        var quotePrefix = visible
+        while quotePrefix.hasPrefix("▍ ") {
+            prefixLength += 2
+            quotePrefix.removeFirst(2)
+        }
+        contentStart += prefixLength
+
+        let kind = rendered.attribute(.markdownBlockKind, at: min(contentStart, end - 1), effectiveRange: nil) as? String
+        let body: String
+        switch kind {
+        case "heading":
+            let level = rendered.attribute(.markdownHeadingLevel, at: contentStart, effectiveRange: nil) as? Int ?? 1
+            body = String(repeating: "#", count: min(max(level, 1), 6)) + " " + serializeInline(
+                rendered,
+                range: NSRange(location: contentStart, length: end - contentStart)
+            )
+        case "list":
+            let listKind = rendered.attribute(.markdownListKind, at: contentStart, effectiveRange: nil) as? String ?? "unordered"
+            let depth = rendered.attribute(.markdownListDepth, at: contentStart, effectiveRange: nil) as? Int ?? 0
+            let ordinal = rendered.attribute(.markdownListOrdinal, at: contentStart, effectiveRange: nil) as? Int ?? 1
+            let prefix = rendered.attribute(.markdownListPrefixLength, at: contentStart, effectiveRange: nil) as? Int ?? 0
+            let itemStart = min(end, contentStart + prefix)
+            let marker: String
+            if let isTask = rendered.attribute(.markdownListTask, at: contentStart, effectiveRange: nil) as? Bool,
+               isTask,
+               let checked = rendered.attribute(.markdownListChecked, at: contentStart, effectiveRange: nil) as? Bool
+            {
+                let listMarker = listKind == "ordered" ? "\(ordinal)." : "-"
+                marker = "\(listMarker) [\(checked ? "x" : " ")]"
+            } else if listKind == "ordered" {
+                marker = "\(ordinal)."
+            } else {
+                marker = "-"
+            }
+            body = String(repeating: "  ", count: max(depth, 0)) + marker + " " + serializeInline(
+                rendered,
+                range: NSRange(location: itemStart, length: end - itemStart)
+            )
+        case "table":
+            var cells: [String] = []
+            var cellStart = contentStart
+            while cellStart <= end {
+                let tab = string.range(of: "\t", options: [], range: NSRange(location: cellStart, length: end - cellStart))
+                let cellEnd = tab.location == NSNotFound ? end : tab.location
+                cells.append(serializeInline(
+                    rendered,
+                    range: NSRange(location: cellStart, length: max(0, cellEnd - cellStart))
+                ))
+                guard tab.location != NSNotFound else { break }
+                cellStart = tab.location + tab.length
+            }
+            body = "| " + cells.joined(separator: " | ") + " |"
+        case "code":
+            body = string.substring(with: NSRange(location: contentStart, length: end - contentStart))
+        case "thematicBreak":
+            body = "---"
+        default:
+            body = serializeInline(
+                rendered,
+                range: NSRange(location: contentStart, length: end - contentStart)
+            )
+        }
+
+        return quoteLines(body, depth: quoteDepth)
+    }
+
+    @MainActor
+    private func serializeInline(_ rendered: NSAttributedString, range: NSRange) -> String {
+        guard range.length > 0 else { return "" }
+        let string = rendered.string as NSString
+        var result = ""
+        rendered.enumerateAttributes(in: range) { attributes, subrange, _ in
+            var value = string.substring(with: subrange)
+            let style = attributes[.markdownInlineStyle] as? Int ?? 0
+            if let link = attributes[.link] {
+                let destination = (link as? URL)?.absoluteString ?? String(describing: link)
+                value = "[\(value)](\(destination))"
+            } else if style & 4 != 0 {
+                value = "`\(value)`"
+            } else {
+                value = escapePlainInline(value)
+                if style & 2 != 0 { value = "**\(value)**" }
+                if style & 1 != 0 { value = "*\(value)*" }
+            }
+            result += value
+        }
+        return result
+    }
+
+    private func quoteDepth(in rendered: NSAttributedString, at location: Int) -> Int {
+        guard rendered.length > 0 else { return 0 }
+        return rendered.attribute(.markdownQuoteDepth, at: min(location, rendered.length - 1), effectiveRange: nil) as? Int ?? 0
+    }
+
+    private func firstVisibleIndex(in rendered: NSAttributedString, paragraph: NSRange) -> Int {
+        let string = rendered.string as NSString
+        var index = paragraph.location
+        while index < NSMaxRange(paragraph), string.character(at: index) == 10 { index += 1 }
+        return min(index, max(paragraph.location, NSMaxRange(paragraph) - 1))
+    }
+
+    private func blockMetadataStart(in rendered: NSAttributedString, paragraph: NSRange) -> Int {
+        let start = firstVisibleIndex(in: rendered, paragraph: paragraph)
+        var index = start
+        while index < NSMaxRange(paragraph) {
+            if rendered.attribute(.markdownBlockKind, at: index, effectiveRange: nil) != nil {
+                return index
+            }
+            index += 1
+        }
+        return start
+    }
+
+    private func quoteLines(_ value: String, depth: Int) -> String {
+        guard depth > 0 else { return value }
+        let prefix = String(repeating: "> ", count: depth)
+        return value.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { prefix + $0 }
+            .joined(separator: "\n")
+    }
+
+    private func canShareListSpacing(with kind: String, previousKind: String?) -> Bool {
+        kind == "list" && previousKind == "list"
+    }
+
+    private func escapePlainInline(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "*", with: "\\*")
+            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
     }
 }
 

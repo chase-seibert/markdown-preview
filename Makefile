@@ -5,6 +5,7 @@ DERIVED_DATA := build
 APP_NAME := Markdown Preview
 APP_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/$(APP_NAME).app
 INSTALL_PATH := $(HOME)/Applications/$(APP_NAME).app
+REFERENCE_MARKDOWN := $(CURDIR)/README.md
 BUNDLE_IDENTIFIER := com.cseibert.MarkdownPreview
 
 .PHONY: setup format lint test build run install clean
@@ -26,7 +27,7 @@ build:
 	xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration "$(CONFIGURATION)" -destination 'platform=macOS' -derivedDataPath "$(DERIVED_DATA)" CODE_SIGNING_ALLOWED=NO build
 
 run: install
-	open "$(INSTALL_PATH)"
+	open -a "$(INSTALL_PATH)" "$(REFERENCE_MARKDOWN)"
 
 install:
 	xcodebuild -project "$(PROJECT)" -scheme "$(SCHEME)" -configuration Release -destination 'platform=macOS' -derivedDataPath "$(DERIVED_DATA)" build
