@@ -174,6 +174,7 @@ final class MarkdownViewController: NSViewController, NSTextViewDelegate {
         guard !isRendering else { return }
         textView.removeEmptyRenderedElements()
         textView.normalizeTypedMarkers()
+        textView.updateTableLayout()
         let proposedSource = MarkdownSourceSerializer().serialize(textView.attributedString())
         switch onSourceChange(proposedSource) {
         case .saved:
@@ -220,6 +221,11 @@ private final class MarkdownTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         updateReadingInsets()
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        drawTableGrid(in: dirtyRect)
+        super.draw(dirtyRect)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -388,6 +394,198 @@ private final class MarkdownTextView: NSTextView {
     }
 
     private var allowProtectedMutation = false
+
+    private struct TableRowLayout {
+        let rowRect: NSRect
+        let cellStarts: [CGFloat]
+        let cellEnds: [CGFloat]
+        let isHeader: Bool
+    }
+
+    private func drawTableGrid(in dirtyRect: NSRect) {
+        guard let textStorage, let layoutManager, let textContainer,
+              textStorage.length > 0
+        else { return }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let string = textStorage.string as NSString
+        let origin = textContainerOrigin
+        var location = 0
+        var rows: [TableRowLayout] = []
+
+        while location < textStorage.length {
+            let paragraph = string.paragraphRange(
+                for: NSRange(location: location, length: 0)
+            )
+            let contentEnd: Int
+            if NSMaxRange(paragraph) > paragraph.location,
+               string.character(at: NSMaxRange(paragraph) - 1) == 10
+            {
+                contentEnd = NSMaxRange(paragraph) - 1
+            } else {
+                contentEnd = NSMaxRange(paragraph)
+            }
+
+            guard paragraph.location < textStorage.length,
+                  textStorage.attribute(.markdownBlockKind, at: paragraph.location, effectiveRange: nil) as? String == "table",
+                  contentEnd > paragraph.location
+            else {
+                location = max(location + 1, NSMaxRange(paragraph))
+                continue
+            }
+
+            let characterRange = NSRange(
+                location: paragraph.location,
+                length: contentEnd - paragraph.location
+            )
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: characterRange,
+                actualCharacterRange: nil
+            )
+            guard glyphRange.length > 0 else {
+                location = max(location + 1, NSMaxRange(paragraph))
+                continue
+            }
+
+            let lineRect = layoutManager.lineFragmentRect(
+                forGlyphAt: glyphRange.location,
+                effectiveRange: nil
+            )
+            let usedRect = layoutManager.boundingRect(
+                forGlyphRange: glyphRange,
+                in: textContainer
+            )
+            let paragraphStyle = textStorage.attribute(
+                .paragraphStyle,
+                at: paragraph.location,
+                effectiveRange: nil
+            ) as? NSParagraphStyle
+            let tabStops = paragraphStyle?.tabStops ?? []
+            let cellRanges = tableCellRanges(
+                in: paragraph,
+                contentEnd: contentEnd
+            )
+            var cellStarts: [CGFloat] = []
+            var cellEnds: [CGFloat] = []
+            for (index, cellRange) in cellRanges.enumerated() {
+                let start: CGFloat
+                let end: CGFloat
+                if cellRange.length > 0 {
+                    let cellGlyphs = layoutManager.glyphRange(
+                        forCharacterRange: cellRange,
+                        actualCharacterRange: nil
+                    )
+                    if cellGlyphs.length > 0 {
+                        let cellRect = layoutManager.boundingRect(
+                            forGlyphRange: cellGlyphs,
+                            in: textContainer
+                        )
+                        start = cellRect.minX
+                        end = cellRect.maxX
+                    } else {
+                        start = lineRect.minX
+                        end = start
+                    }
+                } else if index == 0 {
+                    start = lineRect.minX
+                    end = start
+                } else if index - 1 < tabStops.count {
+                    start = lineRect.minX + tabStops[index - 1].location
+                    end = start
+                } else {
+                    start = (cellStarts.last ?? lineRect.minX) + 80
+                    end = start
+                }
+                cellStarts.append(start)
+                cellEnds.append(end)
+            }
+
+            rows.append(TableRowLayout(
+                rowRect: NSRect(
+                    x: lineRect.minX + origin.x,
+                    y: lineRect.minY + origin.y,
+                    width: max(1, usedRect.maxX - lineRect.minX),
+                    height: lineRect.height
+                ),
+                cellStarts: cellStarts,
+                cellEnds: cellEnds,
+                isHeader: textStorage.attribute(
+                    .markdownTableHeader,
+                    at: paragraph.location,
+                    effectiveRange: nil
+                ) as? Bool == true
+            ))
+            location = max(location + 1, NSMaxRange(paragraph))
+        }
+
+        guard !rows.isEmpty else { return }
+        let padding: CGFloat = 8
+        let minimumLastColumnWidth: CGFloat = 64
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let borderColor = NSColor(
+            calibratedWhite: isDark ? 0.35 : 0.82,
+            alpha: 1
+        )
+        let headerColor = NSColor(
+            calibratedWhite: isDark ? 0.22 : 0.93,
+            alpha: 1
+        )
+        let lineWidth = 1 / max(window?.backingScaleFactor ?? 2, 1)
+
+        let tableLeft = rows.compactMap { $0.cellStarts.first }.min() ?? 0
+        let tableRight = max(
+            rows.compactMap { $0.cellEnds.last }.max() ?? tableLeft,
+            rows.compactMap { row in
+                row.cellStarts.last.map { $0 + minimumLastColumnWidth }
+            }.max() ?? tableLeft
+        )
+        let left = tableLeft - padding + origin.x
+        let right = tableRight + padding + origin.x
+        let columnCount = rows.map { $0.cellStarts.count }.max() ?? 0
+        let boundaries = (1..<columnCount).compactMap { column in
+            rows.compactMap { row in
+                row.cellStarts.indices.contains(column) ? row.cellStarts[column] : nil
+            }.max().map { $0 - padding + origin.x }
+        }
+
+        for row in rows {
+            var rect = row.rowRect
+            rect.origin.x = left
+            rect.size.width = max(1, right - left)
+            guard rect.intersects(dirtyRect) else { continue }
+
+            if row.isHeader {
+                headerColor.setFill()
+                NSBezierPath(rect: rect).fill()
+            }
+
+            let border = NSBezierPath(rect: rect)
+            for boundary in boundaries where boundary > rect.minX && boundary < rect.maxX {
+                border.move(to: NSPoint(x: boundary, y: rect.minY))
+                border.line(to: NSPoint(x: boundary, y: rect.maxY))
+            }
+            border.lineWidth = lineWidth
+            borderColor.setStroke()
+            border.stroke()
+        }
+    }
+
+    private func tableCellRanges(in paragraph: NSRange, contentEnd: Int) -> [NSRange] {
+        guard contentEnd >= paragraph.location, let textStorage else { return [] }
+        let string = textStorage.string as NSString
+        var ranges: [NSRange] = []
+        var start = paragraph.location
+        var location = paragraph.location
+        while location < contentEnd {
+            if string.character(at: location) == 9 {
+                ranges.append(NSRange(location: start, length: location - start))
+                start = location + 1
+            }
+            location += 1
+        }
+        ranges.append(NSRange(location: start, length: contentEnd - start))
+        return ranges
+    }
 
     override func resetCursorRects() {
         super.resetCursorRects()
@@ -573,6 +771,78 @@ private final class MarkdownTextView: NSTextView {
         textStorage.beginEditing()
         for range in emptyRanges.reversed() {
             textStorage.deleteCharacters(in: range)
+        }
+        textStorage.endEditing()
+    }
+
+    func updateTableLayout() {
+        guard let textStorage, textStorage.length > 0 else { return }
+
+        var tableParagraphs: [NSRange] = []
+        var location = 0
+        while location < textStorage.length {
+            let paragraph = (string as NSString).paragraphRange(
+                for: NSRange(location: location, length: 0)
+            )
+            if textStorage.attribute(.markdownBlockKind, at: paragraph.location, effectiveRange: nil) as? String == "table" {
+                tableParagraphs.append(paragraph)
+            }
+            let next = NSMaxRange(paragraph)
+            if next <= location { break }
+            location = next
+        }
+        guard !tableParagraphs.isEmpty else { return }
+
+        let padding: CGFloat = 9
+        let minimumColumnWidth: CGFloat = 68
+        let rows = tableParagraphs.map { paragraph -> [NSRange] in
+            let end: Int
+            if NSMaxRange(paragraph) > paragraph.location,
+               (string as NSString).character(at: NSMaxRange(paragraph) - 1) == 10
+            {
+                end = NSMaxRange(paragraph) - 1
+            } else {
+                end = NSMaxRange(paragraph)
+            }
+            return tableCellRanges(in: paragraph, contentEnd: end)
+        }
+        let columnCount = max(1, rows.map(\.count).max() ?? 1)
+        var widths = Array(repeating: minimumColumnWidth, count: columnCount)
+        for row in rows {
+            for (column, range) in row.enumerated() where column < widths.count {
+                guard range.length > 0 else { continue }
+                let measured = textStorage.attributedSubstring(from: range).size().width
+                widths[column] = max(widths[column], measured)
+            }
+        }
+        let tabs = (0..<max(0, columnCount - 1)).map { index in
+            let precedingWidth = widths.prefix(index + 1).reduce(0, +)
+            return NSTextTab(
+                textAlignment: .left,
+                location: precedingWidth + padding * CGFloat(3 + index * 2)
+            )
+        }
+
+        textStorage.beginEditing()
+        for paragraph in tableParagraphs {
+            let existing = textStorage.attribute(
+                .paragraphStyle,
+                at: paragraph.location,
+                effectiveRange: nil
+            ) as? NSParagraphStyle
+            let style = (existing?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+            style.firstLineHeadIndent = padding
+            style.headIndent = padding
+            style.tabStops = tabs
+            let font = textStorage.attribute(
+                .font,
+                at: paragraph.location,
+                effectiveRange: nil
+            ) as? NSFont
+            let rowHeight = ceil((font?.pointSize ?? 16) * 2.5)
+            style.minimumLineHeight = rowHeight
+            style.maximumLineHeight = rowHeight
+            textStorage.addAttribute(.paragraphStyle, value: style, range: paragraph)
         }
         textStorage.endEditing()
     }

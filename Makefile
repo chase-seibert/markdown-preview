@@ -5,7 +5,7 @@ DERIVED_DATA := build
 APP_NAME := Markdown Preview
 APP_PATH := $(DERIVED_DATA)/Build/Products/$(CONFIGURATION)/$(APP_NAME).app
 INSTALL_PATH := $(HOME)/Applications/$(APP_NAME).app
-REFERENCE_MARKDOWN := $(CURDIR)/README.md
+REFERENCE_MARKDOWN := $(CURDIR)/docs/editing-example.md
 BUNDLE_IDENTIFIER := com.cseibert.MarkdownPreview
 
 .PHONY: setup format lint test build run install clean

@@ -204,6 +204,80 @@ final class MarkdownCoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRenderedTableCellsAndRowsDoNotOverlap() {
+        let source = """
+            | Current Baseline | Default EOY Target | Required Inputs |
+            | --- | --- | --- |
+            | At or above 7 | Target 7 | Numeric target in the sheet |
+            | At or above 5.25 and below 7 | Target 7 | Numeric target in the sheet |
+            | Below 5.25 | Set an ambitious, achievable custom target | Numeric target and supporting rationale |
+            """
+        let rendered = MarkdownAttributedRenderer().render(source)
+        let storage = NSTextStorage(attributedString: rendered)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: NSSize(width: 3_000, height: 3_000))
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+
+        let string = storage.string as NSString
+        var paragraphLocation = 0
+        var previousRowRect: NSRect?
+        while paragraphLocation < storage.length {
+            let paragraph = string.paragraphRange(
+                for: NSRange(location: paragraphLocation, length: 0)
+            )
+            defer { paragraphLocation = NSMaxRange(paragraph) }
+            guard storage.attribute(
+                .markdownBlockKind,
+                at: paragraph.location,
+                effectiveRange: nil
+            ) as? String == "table" else { continue }
+
+            var contentEnd = NSMaxRange(paragraph)
+            if contentEnd > paragraph.location, string.character(at: contentEnd - 1) == 10 {
+                contentEnd -= 1
+            }
+            var cells: [NSRange] = []
+            var cellStart = paragraph.location
+            for index in paragraph.location..<contentEnd where string.character(at: index) == 9 {
+                cells.append(NSRange(location: cellStart, length: index - cellStart))
+                cellStart = index + 1
+            }
+            cells.append(NSRange(location: cellStart, length: contentEnd - cellStart))
+
+            let cellRects = cells.compactMap { range -> NSRect? in
+                guard range.length > 0 else { return nil }
+                let glyphs = layoutManager.glyphRange(
+                    forCharacterRange: range,
+                    actualCharacterRange: nil
+                )
+                return layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+            }
+            for pair in zip(cellRects, cellRects.dropFirst()) {
+                XCTAssertLessThanOrEqual(pair.0.maxX, pair.1.minX)
+            }
+
+            let rowCharacters = NSRange(
+                location: paragraph.location,
+                length: max(1, contentEnd - paragraph.location)
+            )
+            let rowGlyphs = layoutManager.glyphRange(
+                forCharacterRange: rowCharacters,
+                actualCharacterRange: nil
+            )
+            let rowRect = layoutManager.lineFragmentRect(
+                forGlyphAt: rowGlyphs.location,
+                effectiveRange: nil
+            )
+            if let previousRowRect {
+                XCTAssertLessThanOrEqual(previousRowRect.maxY, rowRect.minY)
+            }
+            previousRowRect = rowRect
+        }
+    }
+
+    @MainActor
     func testFirstFontScaleChangeCoversEveryCharacter() {
         let source = "# Heading\n\nBody with `code`.\n\n- List item\n\n> Quote"
         let small = MarkdownAttributedRenderer().render(source, options: .init(fontScale: 0.8))

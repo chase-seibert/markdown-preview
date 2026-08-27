@@ -22,7 +22,7 @@ With\*\* menu.
 
 copies the full rich document when there is no selection.
 
-- **Copy for Chat** (Control-Command-C) produces Slack-friendly rich text
+- **Copy for Chat** (Control-Command-C) produces Slack-friendly rich text \*\*
 
 with bold headings, space after the title, and space before later headings.
 

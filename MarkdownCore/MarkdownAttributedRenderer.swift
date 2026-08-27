@@ -351,20 +351,42 @@ public struct MarkdownAttributedRenderer: Sendable {
     ) {
         let font = NSFont.systemFont(ofSize: bodySize * 0.95)
         let bold = NSFont.systemFont(ofSize: bodySize * 0.95, weight: .semibold)
-        let tabs = (1..<max(headers.count, 2)).map {
-            NSTextTab(textAlignment: .left, location: CGFloat($0) * bodySize * 10)
+        let tableRows = [headers] + rows
+        let columnCount = max(1, tableRows.map(\.count).max() ?? 1)
+        let cellPadding = bodySize * 0.55
+        var columnWidths = Array(repeating: bodySize * 4, count: columnCount)
+        for (rowIndex, row) in tableRows.enumerated() {
+            let rowFont = rowIndex == 0 ? bold : font
+            for (columnIndex, cell) in row.enumerated() {
+                guard columnIndex < columnWidths.count else { continue }
+                columnWidths[columnIndex] = max(
+                    columnWidths[columnIndex],
+                    inline(cell, font: rowFont, colors: colors).size().width
+                )
+            }
+        }
+        let tabs = (0..<max(0, columnCount - 1)).map { index in
+            let precedingWidth = columnWidths.prefix(index + 1).reduce(0, +)
+            return NSTextTab(
+                textAlignment: .left,
+                location: precedingWidth + cellPadding * CGFloat(3 + index * 2)
+            )
         }
 
-        for (rowIndex, row) in ([headers] + rows).enumerated() {
+        for (rowIndex, row) in tableRows.enumerated() {
             let value = NSMutableAttributedString()
             for (cellIndex, cell) in row.enumerated() {
                 if cellIndex > 0 { value.append(NSAttributedString(string: "\t")) }
                 value.append(inline(cell, font: rowIndex == 0 ? bold : font, colors: colors))
             }
             let style = NSMutableParagraphStyle()
+            style.firstLineHeadIndent = cellPadding
+            style.headIndent = cellPadding
             style.tabStops = tabs
-            style.paragraphSpacing = rowIndex == rows.count ? bodySize * 0.75 : bodySize * 0.25
-            style.lineHeightMultiple = 1.25
+            style.paragraphSpacing = rowIndex == rows.count ? bodySize * 0.75 : 0
+            let rowHeight = ceil(font.pointSize * 2.5)
+            style.minimumLineHeight = rowHeight
+            style.maximumLineHeight = rowHeight
             value.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: value.length))
             addBlockAttributes(to: value, kind: "table", quoteDepth: quoteDepth)
             value.addAttribute(.markdownTableHeader, value: rowIndex == 0, range: NSRange(location: 0, length: value.length))
@@ -755,7 +777,10 @@ private struct Colors {
             code = .labelColor
             codeBackground = .quaternaryLabelColor
             separator = .separatorColor
-            tableHeader = .quaternaryLabelColor
+            tableHeader = NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                return NSColor(calibratedWhite: isDark ? 0.22 : 0.93, alpha: 1)
+            }
         case .print:
             text = .black
             secondary = .darkGray
