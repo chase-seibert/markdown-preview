@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     private var settingsController: SettingsWindowController?
     private var receivedOpenRequest = false
     private let linkedFileAccess = LinkedFileAccessController()
+    private let pathBarController = PathBarController.shared
     private let logger = Logger(subsystem: "com.cseibert.MarkdownPreview", category: "DocumentLifecycle")
 
     static func main() {
@@ -114,12 +115,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         open(panel.urls)
     }
 
+    @objc func moveDocument(_ sender: Any?) {
+        currentDocument?.move(sender)
+    }
+
     @objc func showSettings(_ sender: Any?) {
         if settingsController == nil {
             settingsController = SettingsWindowController(
                 fontScale: .shared,
                 appearance: .shared,
-                dockVisibility: .shared
+                dockVisibility: .shared,
+                pathBar: pathBarController
             )
         }
         settingsController?.showWindow(sender)
@@ -228,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
             #selector(toggleBulletedList(_:)), #selector(toggleNumberedList(_:)),
             #selector(undo(_:)), #selector(redo(_:)),
             #selector(exportMarkdown(_:)), #selector(exportPlainText(_:)), #selector(exportRichText(_:)),
-            #selector(exportHTML(_:)), #selector(exportPDF(_:)),
+            #selector(exportHTML(_:)), #selector(exportPDF(_:)), #selector(moveDocument(_:)),
         ]
         if let action = menuItem.action, actionsRequiringDocument.contains(action) {
             return currentDocument != nil
@@ -237,6 +243,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu.identifier == NSUserInterfaceItemIdentifier("ViewMenu") {
+            menu.item(withTitle: "Show Path Bar")?.state = pathBarController.showsPathBar ? .on : .off
+            return
+        }
         guard menu.identifier == NSUserInterfaceItemIdentifier("OpenRecentMenu") else { return }
         menu.removeAllItems()
         let urls = NSDocumentController.shared.recentDocumentURLs
@@ -366,6 +376,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         recent.delegate = self
         file.addItem(withTitle: "Open Recent", action: nil, keyEquivalent: "").submenu = recent
         file.addItem(.separator())
+        addItem("Move…", action: #selector(moveDocument(_:)), to: file)
+        file.addItem(.separator())
         let export = NSMenu(title: "Export")
         addItem("Markdown…", action: #selector(exportMarkdown(_:)), to: export)
         addItem("Plain Text…", action: #selector(exportPlainText(_:)), to: export)
@@ -410,9 +422,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         main.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = edit
 
         let view = NSMenu(title: "View")
+        view.identifier = NSUserInterfaceItemIdentifier("ViewMenu")
+        view.delegate = self
         addItem("Increase Text Size", action: #selector(FontScaleController.increaseFontSize(_:)), key: "+", modifiers: [.command], target: FontScaleController.shared, to: view)
         addItem("Decrease Text Size", action: #selector(FontScaleController.decreaseFontSize(_:)), key: "-", modifiers: [.command], target: FontScaleController.shared, to: view)
         addItem("Actual Text Size", action: #selector(FontScaleController.resetFontSize(_:)), key: "0", modifiers: [.command], target: FontScaleController.shared, to: view)
+        view.addItem(.separator())
+        let pathBar = view.addItem(withTitle: "Show Path Bar", action: #selector(PathBarController.toggle(_:)), keyEquivalent: "")
+        pathBar.target = pathBarController
+        pathBar.state = pathBarController.showsPathBar ? .on : .off
         view.addItem(.separator())
         view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f").keyEquivalentModifierMask = [.command, .control]
         main.addItem(withTitle: "View", action: nil, keyEquivalent: "").submenu = view

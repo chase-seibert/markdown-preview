@@ -19,6 +19,7 @@ final class MarkdownDocument: NSDocument {
     private var pendingSelfWrite: SelfWriteExpectation?
     private var externalReloadTask: Task<Void, Never>?
     private var fileWatcher: MarkdownFileWatcher?
+    private var pathBars: [DocumentPathBar] = []
     private var isPresentingConflict = false
 
     override class var autosavesInPlace: Bool { false }
@@ -68,7 +69,31 @@ final class MarkdownDocument: NSDocument {
                 self?.presentEditConflict(proposedSource: proposedSource, controller: controller)
             }
         )
-        let window = NSWindow(contentViewController: contentController)
+        let pathBar = DocumentPathBar(documentURL: fileURL)
+        let containerController = NSViewController()
+        let containerView = NSView()
+        containerController.view = containerView
+        containerController.addChild(contentController)
+        let stackView = NSStackView(views: [contentController.view, pathBar])
+        stackView.orientation = .vertical
+        stackView.alignment = .width
+        stackView.spacing = 0
+        stackView.detachesHiddenViews = true
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(stackView)
+        contentController.view.translatesAutoresizingMaskIntoConstraints = false
+        pathBar.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            contentController.view.widthAnchor.constraint(equalTo: containerView.widthAnchor),
+            pathBar.widthAnchor.constraint(equalTo: containerView.widthAnchor),
+        ])
+        pathBars.append(pathBar)
+
+        let window = NSWindow(contentViewController: containerController)
         window.setContentSize(NSSize(width: 780, height: 760))
         window.minSize = NSSize(width: 460, height: 320)
         window.styleMask.insert([.resizable, .miniaturizable, .closable, .titled, .fullSizeContentView])
@@ -353,6 +378,7 @@ final class MarkdownDocument: NSDocument {
             controller.window?.title = displayName
             (controller.contentViewController as? MarkdownViewController)?.updateDocumentURL(url)
         }
+        pathBars.forEach { $0.updateDocumentURL(url) }
     }
 
     private struct FileSignature: Equatable, Sendable {

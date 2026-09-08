@@ -4,12 +4,14 @@ Markdown Preview uses a standard macOS document window. The title bar shows the
 file name and proxy icon; the body is a single native, read-only text view with
 normal selection, link interaction, scrolling, Find, and Services behavior.
 
-There is intentionally no sidebar, project switcher, status bar, or custom
-window chrome. Files always use separate windows: automatic window tabbing is
+There is intentionally no sidebar, project switcher, or custom window chrome.
+Files always use separate windows: automatic window tabbing is
 disabled, and document windows reject tabbing. File operations live in the File
 menu, copy variants and editing commands in the Edit menu, and reading size in
 the View menu. A
-compact Settings window provides persistent appearance and text-size controls.
+compact Settings window provides persistent appearance, text-size, and optional
+path-bar controls. When enabled, a Finder-style path bar appears at the bottom
+of each document window, showing the full file path and offering a copy button.
 It also lets users hide the application icon from the Dock and app switcher;
 opening a Markdown file brings the app forward when the icon is hidden.
 

@@ -11,6 +11,7 @@
 		A10000000000000000000003 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* MarkdownDocument.swift */; };
 		A10000000000000000000004 /* MarkdownViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000004 /* MarkdownViewController.swift */; };
 		A10000000000000000000005 /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000005 /* SettingsWindowController.swift */; };
+		A1000000000000000000000E /* PathBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000000A /* PathBarController.swift */; };
 		A1000000000000000000000B /* AppearanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000008 /* AppearanceController.swift */; };
 		A1000000000000000000000C /* DockVisibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000009 /* DockVisibilityController.swift */; };
 		A10000000000000000000006 /* MarkdownParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* MarkdownParser.swift */; };
@@ -45,6 +46,7 @@
 		F10000000000000000000007 /* MarkdownPreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MarkdownPreview.entitlements; sourceTree = "<group>"; };
 		F10000000000000000000008 /* AppearanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceController.swift; sourceTree = "<group>"; };
 		F10000000000000000000009 /* DockVisibilityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockVisibilityController.swift; sourceTree = "<group>"; };
+		F1000000000000000000000A /* PathBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PathBarController.swift; sourceTree = "<group>"; };
 		F20000000000000000000001 /* MarkdownParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownParser.swift; sourceTree = "<group>"; };
 		F20000000000000000000002 /* MarkdownAttributedRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownAttributedRenderer.swift; sourceTree = "<group>"; };
 		F20000000000000000000003 /* MarkdownHTMLRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownHTMLRenderer.swift; sourceTree = "<group>"; };
@@ -65,7 +67,7 @@
 
 /* Begin PBXGroup section */
 		G10000000000000000000001 = {isa = PBXGroup; children = (G10000000000000000000002 /* MarkdownPreviewApp */, G10000000000000000000003 /* MarkdownCore */, G10000000000000000000004 /* MarkdownPreviewQuickLook */, G10000000000000000000005 /* Resources */, G10000000000000000000006 /* Products */, ); sourceTree = "<group>"; };
-		G10000000000000000000002 /* MarkdownPreviewApp */ = {isa = PBXGroup; path = MarkdownPreviewApp; sourceTree = "<group>"; children = (F10000000000000000000001, F10000000000000000000008, F10000000000000000000009, F10000000000000000000002, F10000000000000000000003, F10000000000000000000004, F10000000000000000000005, F10000000000000000000006, F10000000000000000000007, ); };
+		G10000000000000000000002 /* MarkdownPreviewApp */ = {isa = PBXGroup; path = MarkdownPreviewApp; sourceTree = "<group>"; children = (F10000000000000000000001, F10000000000000000000008, F10000000000000000000009, F1000000000000000000000A, F10000000000000000000002, F10000000000000000000003, F10000000000000000000004, F10000000000000000000005, F10000000000000000000006, F10000000000000000000007, ); };
 		G10000000000000000000003 /* MarkdownCore */ = {isa = PBXGroup; path = MarkdownCore; sourceTree = "<group>"; children = (F20000000000000000000001, F20000000000000000000002, F20000000000000000000003, F20000000000000000000004, F20000000000000000000005, ); };
 		G10000000000000000000004 /* MarkdownPreviewQuickLook */ = {isa = PBXGroup; path = MarkdownPreviewQuickLook; sourceTree = "<group>"; children = (F40000000000000000000001, F40000000000000000000002, F40000000000000000000003, ); };
 		G10000000000000000000005 /* Resources */ = {isa = PBXGroup; path = Resources; sourceTree = "<group>"; children = (F30000000000000000000001, ); };
@@ -87,7 +89,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		B10000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A1000000000000000000000B, A1000000000000000000000C, A1000000000000000000000D, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000009, ); runOnlyForDeploymentPostprocessing = 0; };
+		B10000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A1000000000000000000000B, A1000000000000000000000C, A1000000000000000000000D, A1000000000000000000000E, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A10000000000000000000008, A10000000000000000000009, ); runOnlyForDeploymentPostprocessing = 0; };
 		B20000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000004, A20000000000000000000005, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

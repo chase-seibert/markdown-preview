@@ -31,6 +31,8 @@ with bold headings, space after the title, and space before later headings.
 and support native undo/redo.
 
 - Exports Markdown, plain text, rich text, HTML, and PDF.
+- Optional Finder-style bottom path bar with one-click full-path copying.
+- Moves the open document through the standard File > Move… command.
 
 ## Build and run
 

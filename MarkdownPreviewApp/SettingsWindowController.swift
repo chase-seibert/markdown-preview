@@ -6,18 +6,20 @@ final class SettingsWindowController: NSWindowController {
     convenience init(
         fontScale: FontScaleController,
         appearance: AppearanceController,
-        dockVisibility: DockVisibilityController
+        dockVisibility: DockVisibilityController,
+        pathBar: PathBarController
     ) {
         let root = SettingsView(
             fontScale: fontScale,
             appearance: appearance,
-            dockVisibility: dockVisibility
+            dockVisibility: dockVisibility,
+            pathBar: pathBar
         )
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(contentViewController: hosting)
         window.title = "Markdown Preview Settings"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 430, height: 290))
+        window.setContentSize(NSSize(width: 430, height: 330))
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)
@@ -28,6 +30,7 @@ private struct SettingsView: View {
     @ObservedObject var fontScale: FontScaleController
     @ObservedObject var appearance: AppearanceController
     @ObservedObject var dockVisibility: DockVisibilityController
+    @ObservedObject var pathBar: PathBarController
 
     var body: some View {
         Form {
@@ -91,6 +94,17 @@ private struct SettingsView: View {
                 .toggleStyle(.switch)
             }
 
+            LabeledContent("Path Bar") {
+                Toggle(
+                    "Show file path bar",
+                    isOn: Binding(
+                        get: { pathBar.showsPathBar },
+                        set: { pathBar.setShowsPathBar($0) }
+                    )
+                )
+                .toggleStyle(.switch)
+            }
+
             HStack {
                 Spacer()
                 Button("Reset") { fontScale.resetFontSize(nil) }
@@ -98,6 +112,6 @@ private struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(8)
-        .frame(minWidth: 410, minHeight: 270)
+        .frame(minWidth: 410, minHeight: 310)
     }
 }
