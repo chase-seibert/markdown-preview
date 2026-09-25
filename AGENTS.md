@@ -26,6 +26,12 @@ workflows to the Makefile instead of documenting one-off shell commands.
 - `make install`: install the app in the user's Applications folder.
 - `make clean`: remove local build outputs.
 
+Signing defaults to automatic signing with the repository's team-backed Apple
+Development identity. Public contributors can use `SIGNING_MODE=unsigned make
+run` for an unsigned local build or `SIGNING_MODE=adhoc make run` for an
+ad-hoc test signature. Contributors with their own team can override
+`DEVELOPMENT_TEAM=...` without committing project-file changes.
+
 After every app code change, use `make run` so verification always replaces and
 relaunches `~/Applications/Markdown Preview.app`. Do not leave a separate build
 product running alongside the installed app.
